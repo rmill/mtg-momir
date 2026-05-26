@@ -27,37 +27,36 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
     await expect(page.locator('#mode-toggle')).toBeVisible();
   });
 
-  test('2. Swipe right increases mana value', async ({ page }) => {
+  test('2. Swipe right decreases mana value', async ({ page }) => {
     const orb = page.locator('#orb');
     const box = await orb.boundingBox();
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
 
-    // Swipe right (should increase CMC)
+    // Swipe right (should decrease CMC)
     await page.mouse.move(cx, cy);
     await page.mouse.down();
     await page.mouse.move(cx + 80, cy, { steps: 5 });
     await page.mouse.up();
 
-    // CMC should have increased from 5
     const val = parseInt(await page.locator('#orb-number').textContent());
-    expect(val).toBeGreaterThan(5);
+    expect(val).toBeLessThan(5);
   });
 
-  test('3. Swipe left decreases mana value', async ({ page }) => {
+  test('3. Swipe left increases mana value', async ({ page }) => {
     const orb = page.locator('#orb');
     const box = await orb.boundingBox();
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
 
-    // Swipe left (should decrease CMC)
+    // Swipe left (should increase CMC)
     await page.mouse.move(cx, cy);
     await page.mouse.down();
     await page.mouse.move(cx - 80, cy, { steps: 5 });
     await page.mouse.up();
 
     const val = parseInt(await page.locator('#orb-number').textContent());
-    expect(val).toBeLessThan(5);
+    expect(val).toBeGreaterThan(5);
   });
 
   test('4. CMC clamps at minimum 0', async ({ page }) => {
@@ -66,10 +65,10 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
 
-    // Swipe far left
+    // Swipe far right (decreases, clamps at 0)
     await page.mouse.move(cx, cy);
     await page.mouse.down();
-    await page.mouse.move(cx - 400, cy, { steps: 10 });
+    await page.mouse.move(cx + 400, cy, { steps: 10 });
     await page.mouse.up();
 
     const val = parseInt(await page.locator('#orb-number').textContent());
@@ -82,10 +81,10 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
 
-    // Swipe far right
+    // Swipe far left (increases, clamps at 16)
     await page.mouse.move(cx, cy);
     await page.mouse.down();
-    await page.mouse.move(cx + 600, cy, { steps: 10 });
+    await page.mouse.move(cx - 600, cy, { steps: 10 });
     await page.mouse.up();
 
     const val = parseInt(await page.locator('#orb-number').textContent());
@@ -280,7 +279,7 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
     await expect(orb).not.toHaveClass(/charging/);
     // CMC should have changed
     const val = parseInt(await page.locator('#orb-number').textContent());
-    expect(val).toBeGreaterThan(5);
+    expect(val).toBeLessThan(5);
   });
 
   test('14. Card data loads correct number of creatures', async ({ page }) => {
