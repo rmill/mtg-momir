@@ -61,51 +61,66 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  perspective: 600px;
 }
 #orb {
   width: 160px;
   height: 160px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #1a4a3a, #0a1f1a 60%, #050f0a);
-  border: 2px solid #4fc3a044;
-  box-shadow: 0 0 30px #4fc3a022, inset 0 0 40px #4fc3a011;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+  transform-style: preserve-3d;
   cursor: grab;
   user-select: none;
-  transition: transform 0.3s, box-shadow 0.3s, border-color 0.3s;
-  position: relative;
-  perspective: 300px;
+  transition: transform 0.4s ease-out;
+}
+#orb.notransition {
+  transition: none;
 }
 #orb.charging {
-  border-color: #4fc3a0;
-  box-shadow: 0 0 60px #4fc3a066, 0 0 120px #4fc3a033, inset 0 0 60px #4fc3a033;
   animation: rumble 0.05s infinite alternate;
 }
-#orb.charging .orb-number {
-  text-shadow: 0 0 20px #4fc3a0, 0 0 40px #4fc3a0;
-}
 @keyframes rumble {
-  from { transform: translate(-1px, -1px); }
-  to { transform: translate(1px, 1px); }
+  from { translate: -1px -1px; }
+  to { translate: 1px 1px; }
 }
 #orb.burst {
   animation: burst 0.4s forwards;
 }
 @keyframes burst {
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.8); opacity: 0.5; }
-  100% { transform: scale(0); opacity: 0; }
+  0% { scale: 1; opacity: 1; }
+  50% { scale: 1.8; opacity: 0.5; }
+  100% { scale: 0; opacity: 0; }
 }
-.orb-number {
+.orb-sphere {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #1a4a3a, #0a1f1a 60%, #050f0a);
+  border: 2px solid #4fc3a044;
+  box-shadow: 0 0 30px #4fc3a022, inset 0 0 40px #4fc3a011;
+  transition: box-shadow 0.3s, border-color 0.3s;
+}
+#orb.charging .orb-sphere {
+  border-color: #4fc3a0;
+  box-shadow: 0 0 60px #4fc3a066, 0 0 120px #4fc3a033, inset 0 0 60px #4fc3a033;
+}
+.orb-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 3.5rem;
   font-weight: bold;
   color: #4fc3a0;
   text-shadow: 0 0 10px #4fc3a044;
+  backface-visibility: hidden;
   pointer-events: none;
-  transform-style: preserve-3d;
-  transition: transform 0.3s ease-out;
+}
+.orb-face.front {
+  transform: translateZ(80px);
+}
+.orb-face.back {
+  transform: rotateY(180deg) translateZ(80px);
 }
 .orb-hint {
   position: absolute;
@@ -205,7 +220,9 @@ body {
 
 <div id="orb-container">
   <div id="orb">
-    <span class="orb-number" id="orb-number">5</span>
+    <div class="orb-sphere"></div>
+    <div class="orb-face front" id="orb-front">5</div>
+    <div class="orb-face back" id="orb-back">6</div>
   </div>
 </div>
 
@@ -219,7 +236,7 @@ body {
 
 <div id="status">loading...</div>
 <div id="mode-toggle">⚙ <span id="mode-text">RAWBT</span></div>
-<div style="position:fixed;bottom:1rem;left:1rem;font-size:0.7rem;color:#4fc3a0;letter-spacing:0.1em;">v0.1.4</div>
+<div style="position:fixed;bottom:1rem;left:1rem;font-size:0.7rem;color:#4fc3a0;letter-spacing:0.1em;">v0.1.5</div>
 
 <canvas id="dither-canvas" style="display:none"></canvas>
 
@@ -269,11 +286,34 @@ function setStatus(msg, err) {
 
 // Orb swipe
 const orb = document.getElementById('orb');
-const orbNum = document.getElementById('orb-number');
+const orbFront = document.getElementById('orb-front');
+const orbBack = document.getElementById('orb-back');
+let rotation = 0; // current Y rotation in degrees
+let targetRotation = 0;
 
 function updateOrb() {
-  orbNum.textContent = cmc;
+  // Front face shows current cmc, back shows next
+  const frontFacing = Math.round(rotation / 180) % 2 === 0;
+  if (frontFacing) {
+    orbFront.textContent = cmc;
+  } else {
+    orbBack.textContent = cmc;
+  }
 }
+
+function setOrbRotation(deg, animate) {
+  if (animate) {
+    orb.classList.remove('notransition');
+  } else {
+    orb.classList.add('notransition');
+  }
+  rotation = deg;
+  orb.style.transform = `rotateY(${deg}deg)`;
+}
+
+// Set initial state
+orbFront.textContent = cmc;
+orbBack.textContent = cmc + 1;
 
 let pointerDown = false;
 let hasMoved = false;
@@ -284,7 +324,9 @@ orb.addEventListener('pointerdown', (e) => {
   hasMoved = false;
   swipeStartX = e.clientX;
   swipeStartCmc = cmc;
+  targetRotation = rotation;
   orb.setPointerCapture(e.pointerId);
+  orb.classList.add('notransition');
   startCasting();
 });
 
@@ -294,31 +336,49 @@ orb.addEventListener('pointermove', (e) => {
   if (Math.abs(dx) > 15) {
     hasMoved = true;
     cancelCasting();
-    const steps = Math.round(dx / 40);
-    const newCmc = Math.max(CMC_MIN, Math.min(CMC_MAX, swipeStartCmc - steps));
-    // Rotate orb based on drag distance
-    const rotation = Math.max(-45, Math.min(45, dx * 0.5));
-    orb.style.transform = `rotateY(${rotation}deg)`;
-    orbNum.style.transform = `rotateY(${rotation * 0.3}deg) translateZ(10px)`;
+    // Rotate based on drag - 100px = 180deg = 1 CMC step
+    const dragRotation = targetRotation - dx * 1.8;
+    setOrbRotation(dragRotation, false);
+    // Calculate CMC from total rotation steps
+    const steps = Math.round((dragRotation - targetRotation) / 180);
+    const newCmc = Math.max(CMC_MIN, Math.min(CMC_MAX, swipeStartCmc + steps));
     if (newCmc !== cmc) {
       cmc = newCmc;
-      updateOrb();
+      // Update the face that's coming into view
+      const frontVisible = Math.round(dragRotation / 180) % 2 === 0;
+      if (frontVisible) {
+        orbFront.textContent = cmc;
+        orbBack.textContent = Math.max(CMC_MIN, Math.min(CMC_MAX, cmc + 1));
+      } else {
+        orbBack.textContent = cmc;
+        orbFront.textContent = Math.max(CMC_MIN, Math.min(CMC_MAX, cmc + 1));
+      }
     }
   }
 });
 
 orb.addEventListener('pointerup', (e) => {
   pointerDown = false;
-  orb.style.transform = '';
-  orbNum.style.transform = '';
-  if (hasMoved) cancelCasting();
+  if (hasMoved) {
+    cancelCasting();
+    // Snap to nearest 180deg
+    const snapped = Math.round(rotation / 180) * 180;
+    setOrbRotation(snapped, true);
+    // Make sure visible face shows current cmc
+    const frontVisible = Math.round(snapped / 180) % 2 === 0;
+    if (frontVisible) {
+      orbFront.textContent = cmc;
+    } else {
+      orbBack.textContent = cmc;
+    }
+  }
 });
 
 orb.addEventListener('pointercancel', () => {
   pointerDown = false;
-  orb.style.transform = '';
-  orbNum.style.transform = '';
   cancelCasting();
+  const snapped = Math.round(rotation / 180) * 180;
+  setOrbRotation(snapped, true);
 });
 
 // Casting (hold)

@@ -11,7 +11,7 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
   test('1. Page loads with correct initial state', async ({ page }) => {
     // Orb is visible with default CMC of 5
     await expect(page.locator('#orb')).toBeVisible();
-    await expect(page.locator('#orb-number')).toHaveText('5');
+    await expect(page.locator('#orb-front')).toHaveText('5');
 
     // Particles are rendered
     const particles = page.locator('.particle');
@@ -39,7 +39,7 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
     await page.mouse.move(cx + 80, cy, { steps: 5 });
     await page.mouse.up();
 
-    const val = parseInt(await page.locator('#orb-number').textContent());
+    const val = await page.evaluate(() => cmc);
     expect(val).toBeLessThan(5);
   });
 
@@ -55,7 +55,7 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
     await page.mouse.move(cx - 80, cy, { steps: 5 });
     await page.mouse.up();
 
-    const val = parseInt(await page.locator('#orb-number').textContent());
+    const val = await page.evaluate(() => cmc);
     expect(val).toBeGreaterThan(5);
   });
 
@@ -68,10 +68,10 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
     // Swipe far right (decreases, clamps at 0)
     await page.mouse.move(cx, cy);
     await page.mouse.down();
-    await page.mouse.move(cx + 400, cy, { steps: 10 });
+    await page.mouse.move(cx + 800, cy, { steps: 10 });
     await page.mouse.up();
 
-    const val = parseInt(await page.locator('#orb-number').textContent());
+    const val = await page.evaluate(() => cmc);
     expect(val).toBe(0);
   });
 
@@ -84,10 +84,10 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
     // Swipe far left (increases, clamps at 16)
     await page.mouse.move(cx, cy);
     await page.mouse.down();
-    await page.mouse.move(cx - 600, cy, { steps: 10 });
+    await page.mouse.move(cx - 1200, cy, { steps: 10 });
     await page.mouse.up();
 
-    const val = parseInt(await page.locator('#orb-number').textContent());
+    const val = await page.evaluate(() => cmc);
     expect(val).toBe(16);
   });
 
@@ -278,7 +278,7 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
     // Charging should be removed
     await expect(orb).not.toHaveClass(/charging/);
     // CMC should have changed
-    const val = parseInt(await page.locator('#orb-number').textContent());
+    const val = await page.evaluate(() => cmc);
     expect(val).toBeLessThan(5);
   });
 
