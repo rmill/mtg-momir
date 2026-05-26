@@ -122,27 +122,26 @@ body {
   justify-content: center;
   pointer-events: none;
   z-index: 10;
+  overflow: visible;
 }
 #card-wrapper {
   position: relative;
   width: 280px;
-  transition: transform 0.8s ease-in, opacity 0.6s;
+  transform: translateY(0);
+  transition: transform 0.8s ease-in;
 }
 #card-wrapper.flyaway {
-  transform: translateY(-120vh) scale(0.5);
-  opacity: 0;
+  transform: translateY(-120vh);
 }
 #card-color, #card-dithered {
   width: 100%;
   border-radius: 8px;
   box-shadow: 0 0 60px #4fc3a044;
   opacity: 0;
-  transform: scale(0.8);
-  transition: opacity 0.4s, transform 0.4s;
+  transition: opacity 0.4s;
 }
 #card-color.visible, #card-dithered.visible {
   opacity: 1;
-  transform: scale(1);
 }
 #card-dithered {
   position: absolute;
