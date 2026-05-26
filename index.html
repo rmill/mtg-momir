@@ -193,13 +193,11 @@ body {
 <body>
 
 <div class="particles" id="particles"></div>
-<div class="title">THE MOMIR MACHINE</div>
 
 <div id="orb-container">
   <div id="orb">
     <span class="orb-number" id="orb-number">5</span>
   </div>
-  <span class="orb-hint">swipe to change · hold to cast</span>
 </div>
 
 <div id="card-container">
@@ -339,7 +337,6 @@ async function cast() {
 
   // Burst the orb
   orb.classList.add('burst');
-  document.querySelector('.orb-hint').style.opacity = '0';
 
   setStatus('summoning ' + card.name + '...');
 
@@ -388,7 +385,6 @@ async function cast() {
   orb.classList.remove('burst');
   orb.style.transform = '';
   container.classList.add('entering');
-  document.querySelector('.orb-hint').style.opacity = '';
   setTimeout(() => container.classList.remove('entering'), 600);
 
   casting = false;
