@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>The Momir Machine</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Courier New', monospace;
+  background: #0a0a0f;
+  color: #e0e0e0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem;
+  overflow-x: hidden;
+}
+h1 {
+  font-size: 1.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  color: #4fc3a0;
+  text-shadow: 0 0 10px #4fc3a066;
+  margin-bottom: 0.5rem;
+}
+.subtitle {
+  font-size: 0.7rem;
+  color: #666;
+  margin-bottom: 1rem;
+  letter-spacing: 0.1em;
+}
+#grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 360px;
+  margin-bottom: 1rem;
+}
+.btn {
+  aspect-ratio: 1;
+  border: 2px solid #4fc3a0;
+  border-radius: 50%;
+  background: #0a0a0f;
+  color: #4fc3a0;
+  font-size: 1.4rem;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  cursor: pointer;
+  transition: all 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn:active {
+  background: #4fc3a0;
+  color: #0a0a0f;
+  transform: scale(0.92);
+}
+.btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+#status {
+  font-size: 0.8rem;
+  color: #888;
+  margin-bottom: 0.5rem;
+  min-height: 1.2em;
+  text-align: center;
+}
+#status.error { color: #e05050; }
+#status.printing { color: #4fc3a0; }
+#card-name {
+  font-size: 0.9rem;
+  color: #ccc;
+  margin-bottom: 0.5rem;
+  text-align: center;
+  min-height: 1.2em;
+}
+#preview {
+  max-width: 280px;
+  width: 100%;
+  border: 1px solid #333;
+  display: none;
+  image-rendering: pixelated;
+}
+#mode-toggle {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  font-size: 0.7rem;
+  color: #555;
+  cursor: pointer;
+}
+.loading { animation: pulse 0.6s infinite alternate; }
+@keyframes pulse { from { opacity: 0.5; } to { opacity: 1; } }
+</style>
+</head>
+<body>
+<h1>The Momir Machine</h1>
+<div class="subtitle">discard a card. receive a creature.</div>
+<div id="status">Loading card data...</div>
+<div id="grid"></div>
+<div id="card-name"></div>
+<img id="preview" alt="card preview">
+<div id="mode-toggle" title="Toggle print mode">MODE: <span id="mode-label">RAWBT</span></div>
+
+<canvas id="dither-canvas" style="display:none"></canvas>
+
+<script>
+let cardData = null;
+let mode = localStorage.getItem('momir-mode') || 'rawbt';
+const PRINTER_WIDTH = 576;
+const CONTRAST = 1.4;
+
+// Load card data
+fetch('momir-cards.json')
+  .then(r => r.json())
+  .then(data => {
+    cardData = data;
+    const total = Object.values(data).reduce((s, a) => s + a.length, 0);
+    setStatus(`Ready. ${total} creatures loaded.`);
+    buildButtons();
+  })
+  .catch(e => setStatus('Failed to load card data: ' + e.message, 'error'));
+
+function buildButtons() {
+  const grid = document.getElementById('grid');
+  const cmcs = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
+  cmcs.forEach(cmc => {
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.textContent = cmc;
+    btn.disabled = !cardData[String(cmc)] || cardData[String(cmc)].length === 0;
+    btn.addEventListener('click', () => activate(cmc));
+    grid.appendChild(btn);
+  });
+}
+
+function setStatus(msg, cls) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = cls || '';
+}
+
+function setButtons(disabled) {
+  document.querySelectorAll('.btn').forEach(b => b.disabled = disabled);
+}
+
+async function activate(cmc) {
+  const pool = cardData[String(cmc)];
+  if (!pool || pool.length === 0) return;
+
+  setButtons(true);
+  const card = pool[Math.floor(Math.random() * pool.length)];
+  document.getElementById('card-name').textContent = card.name;
+  setStatus('Fetching image...', 'loading');
+
+  try {
+    const img = await loadImage(card.img);
+    setStatus('Dithering...', 'loading');
+    await new Promise(r => setTimeout(r, 10)); // let UI update
+    const dithered = ditherImage(img);
+
+    if (mode === 'rawbt') {
+      setStatus('Printing...', 'printing');
+      await printRawBT(dithered);
+    }
+
+    showPreview(dithered);
+    setStatus(`Printed: ${card.name}`);
+  } catch (e) {
+    setStatus('Error: ' + e.message, 'error');
+  }
+  setButtons(false);
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Image load failed'));
+    img.src = url;
+  });
+}
+
+function ditherImage(img) {
+  const canvas = document.getElementById('dither-canvas');
+  const ratio = PRINTER_WIDTH / img.width;
+  const h = Math.round(img.height * ratio);
+  canvas.width = PRINTER_WIDTH;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+
+  // Draw and get pixels
+  ctx.drawImage(img, 0, 0, PRINTER_WIDTH, h);
+  const imageData = ctx.getImageData(0, 0, PRINTER_WIDTH, h);
+  const pixels = imageData.data;
+
+  // Convert to grayscale with contrast
+  const gray = new Float32Array(PRINTER_WIDTH * h);
+  for (let i = 0; i < gray.length; i++) {
+    const r = pixels[i * 4], g = pixels[i * 4 + 1], b = pixels[i * 4 + 2];
+    let v = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    // Apply contrast
+    v = ((v - 0.5) * CONTRAST + 0.5);
+    gray[i] = Math.max(0, Math.min(1, v)) * 255;
+  }
+
+  // Floyd-Steinberg dithering
+  const w = PRINTER_WIDTH;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      const old = gray[idx];
+      const val = old >= 128 ? 255 : 0;
+      gray[idx] = val;
+      const err = old - val;
+      if (x + 1 < w) gray[idx + 1] += err * 7 / 16;
+      if (y + 1 < h) {
+        if (x > 0) gray[(y + 1) * w + x - 1] += err * 3 / 16;
+        gray[(y + 1) * w + x] += err * 5 / 16;
+        if (x + 1 < w) gray[(y + 1) * w + x + 1] += err * 1 / 16;
+      }
+    }
+  }
+
+  // Write back to canvas as 1-bit black/white
+  for (let i = 0; i < gray.length; i++) {
+    const v = gray[i] >= 128 ? 255 : 0;
+    pixels[i * 4] = pixels[i * 4 + 1] = pixels[i * 4 + 2] = v;
+    pixels[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
+function showPreview(dataUrl) {
+  const preview = document.getElementById('preview');
+  preview.src = dataUrl;
+  preview.style.display = 'block';
+}
+
+function printRawBT(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket('ws://localhost:40213/');
+    socket.onerror = () => reject(new Error('RawBT not connected. Is the app running?'));
+    socket.onopen = () => {
+      socket.send(JSON.stringify({
+        commands: [{
+          command: 'image',
+          base64: dataUrl.split(',')[1],
+          attributesImage: {}
+        }]
+      }));
+    };
+    socket.onmessage = (event) => {
+      const resp = JSON.parse(event.data);
+      if (resp.responseType === 'success') { socket.close(); resolve(); }
+      else if (resp.responseType === 'error') { socket.close(); reject(new Error(resp.errorMessage)); }
+    };
+  });
+}
+
+// Mode toggle
+document.getElementById('mode-toggle').addEventListener('click', () => {
+  mode = mode === 'rawbt' ? 'show' : 'rawbt';
+  localStorage.setItem('momir-mode', mode);
+  document.getElementById('mode-label').textContent = mode.toUpperCase();
+});
+document.getElementById('mode-label').textContent = mode.toUpperCase();
+</script>
+</body>
+</html>

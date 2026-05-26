@@ -1,0 +1,8 @@
+render_samples/
+preview_*.png
+card*.jpg
+card*.png
+card*.bmp
+*.bmp
+*Zone.Identifier
+__pycache__/
