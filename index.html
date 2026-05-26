@@ -6,175 +6,392 @@
 <title>The Momir Machine</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+}
 body {
-  font-family: 'Courier New', monospace;
-  background: #0a0a0f;
+  font-family: 'Georgia', serif;
+  background: radial-gradient(ellipse at 50% 80%, #0d1b2a 0%, #050a12 100%);
   color: #e0e0e0;
-  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 1rem;
-  overflow-x: hidden;
+  justify-content: center;
+  position: relative;
 }
-h1 {
-  font-size: 1.4rem;
-  text-transform: uppercase;
-  letter-spacing: 0.3em;
-  color: #4fc3a0;
-  text-shadow: 0 0 10px #4fc3a066;
-  margin-bottom: 0.5rem;
+
+/* Particle background */
+.particles {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
 }
-.subtitle {
-  font-size: 0.7rem;
-  color: #666;
-  margin-bottom: 1rem;
-  letter-spacing: 0.1em;
-}
-#grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.5rem;
-  width: 100%;
-  max-width: 360px;
-  margin-bottom: 1rem;
-}
-.btn {
-  aspect-ratio: 1;
-  border: 2px solid #4fc3a0;
+.particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: #4fc3a0;
   border-radius: 50%;
-  background: #0a0a0f;
-  color: #4fc3a0;
-  font-size: 1.4rem;
-  font-weight: bold;
-  font-family: 'Courier New', monospace;
-  cursor: pointer;
-  transition: all 0.1s;
+  opacity: 0;
+  animation: float 6s infinite;
+}
+@keyframes float {
+  0% { opacity: 0; transform: translateY(100vh) scale(0); }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.2; }
+  100% { opacity: 0; transform: translateY(-20vh) scale(1); }
+}
+
+/* Title */
+.title {
+  position: fixed;
+  top: 2rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: #4fc3a055;
+}
+
+/* The Orb */
+#orb-container {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.btn:active {
-  background: #4fc3a0;
-  color: #0a0a0f;
-  transform: scale(0.92);
+#orb {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #1a4a3a, #0a1f1a 60%, #050f0a);
+  border: 2px solid #4fc3a044;
+  box-shadow: 0 0 30px #4fc3a022, inset 0 0 40px #4fc3a011;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  user-select: none;
+  transition: transform 0.3s, box-shadow 0.3s, border-color 0.3s;
+  position: relative;
 }
-.btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
+#orb.charging {
+  border-color: #4fc3a0;
+  box-shadow: 0 0 60px #4fc3a066, 0 0 120px #4fc3a033, inset 0 0 60px #4fc3a033;
+  animation: rumble 0.05s infinite alternate;
 }
-#status {
-  font-size: 0.8rem;
-  color: #888;
-  margin-bottom: 0.5rem;
-  min-height: 1.2em;
-  text-align: center;
+#orb.charging .orb-number {
+  text-shadow: 0 0 20px #4fc3a0, 0 0 40px #4fc3a0;
 }
-#status.error { color: #e05050; }
-#status.printing { color: #4fc3a0; }
-#card-name {
+@keyframes rumble {
+  from { transform: translate(-1px, -1px); }
+  to { transform: translate(1px, 1px); }
+}
+#orb.burst {
+  animation: burst 0.4s forwards;
+}
+@keyframes burst {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.8); opacity: 0.5; }
+  100% { transform: scale(0); opacity: 0; }
+}
+.orb-number {
+  font-size: 3.5rem;
+  font-weight: bold;
+  color: #4fc3a0;
+  text-shadow: 0 0 10px #4fc3a044;
+  pointer-events: none;
+}
+.orb-hint {
+  position: absolute;
+  bottom: -2rem;
+  font-size: 0.6rem;
+  color: #4fc3a044;
+  letter-spacing: 0.2em;
+  pointer-events: none;
+}
+
+/* Card reveal */
+#card-container {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 10;
+}
+#card-reveal {
+  width: 280px;
+  max-height: 80vh;
+  border-radius: 8px;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.4s, transform 0.4s;
+  box-shadow: 0 0 60px #4fc3a044;
+}
+#card-reveal.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+#card-reveal.dithered {
+  transition: opacity 1.5s;
+}
+#card-reveal.flyaway {
+  transition: transform 0.6s ease-in, opacity 0.6s;
+  transform: translateY(-120vh) scale(0.5);
+  opacity: 0;
+}
+
+/* Card name overlay */
+#card-name-overlay {
+  position: fixed;
+  bottom: 3rem;
   font-size: 0.9rem;
-  color: #ccc;
-  margin-bottom: 0.5rem;
+  color: #4fc3a0;
   text-align: center;
-  min-height: 1.2em;
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+  text-shadow: 0 0 10px #4fc3a066;
+  letter-spacing: 0.05em;
 }
-#preview {
-  max-width: 280px;
-  width: 100%;
-  border: 1px solid #333;
-  display: none;
-  image-rendering: pixelated;
+#card-name-overlay.visible { opacity: 1; }
+
+/* Orb entrance */
+#orb-container.entering {
+  animation: enterFromBottom 0.6s ease-out;
 }
-#mode-toggle {
+@keyframes enterFromBottom {
+  from { transform: translateY(100vh); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Status */
+#status {
   position: fixed;
   bottom: 1rem;
+  font-size: 0.6rem;
+  color: #4fc3a033;
+  letter-spacing: 0.1em;
+}
+#status.error { color: #e05050aa; }
+
+/* Mode toggle */
+#mode-toggle {
+  position: fixed;
+  top: 1rem;
   right: 1rem;
-  font-size: 0.7rem;
-  color: #555;
+  font-size: 0.6rem;
+  color: #4fc3a033;
   cursor: pointer;
 }
-.loading { animation: pulse 0.6s infinite alternate; }
-@keyframes pulse { from { opacity: 0.5; } to { opacity: 1; } }
 </style>
 </head>
 <body>
-<h1>The Momir Machine</h1>
-<div class="subtitle">discard a card. receive a creature.</div>
-<div id="status">Loading card data...</div>
-<div id="grid"></div>
-<div id="card-name"></div>
-<img id="preview" alt="card preview">
-<div id="mode-toggle" title="Toggle print mode">MODE: <span id="mode-label">RAWBT</span></div>
+
+<div class="particles" id="particles"></div>
+<div class="title">THE MOMIR MACHINE</div>
+
+<div id="orb-container">
+  <div id="orb">
+    <span class="orb-number" id="orb-number">5</span>
+  </div>
+  <span class="orb-hint">swipe to change · hold to cast</span>
+</div>
+
+<div id="card-container">
+  <img id="card-reveal" alt="">
+</div>
+<div id="card-name-overlay"></div>
+
+<div id="status">loading...</div>
+<div id="mode-toggle" id="mode-label">⚙ <span id="mode-text">RAWBT</span></div>
 
 <canvas id="dither-canvas" style="display:none"></canvas>
 
 <script>
-let cardData = null;
-let mode = localStorage.getItem('momir-mode') || 'rawbt';
 const PRINTER_WIDTH = 576;
 const CONTRAST = 1.4;
+const CAST_TIME = 1800;
+const CMC_MIN = 0;
+const CMC_MAX = 16;
 
-// Load card data
+let cardData = null;
+let cmc = 5;
+let mode = localStorage.getItem('momir-mode') || 'rawbt';
+let casting = false;
+let castTimer = null;
+let swipeStartX = 0;
+let swipeStartCmc = 0;
+let growInterval = null;
+
+document.getElementById('mode-text').textContent = mode.toUpperCase();
+
+// Particles
+const particlesEl = document.getElementById('particles');
+for (let i = 0; i < 30; i++) {
+  const p = document.createElement('div');
+  p.className = 'particle';
+  p.style.left = Math.random() * 100 + '%';
+  p.style.animationDelay = Math.random() * 6 + 's';
+  p.style.animationDuration = (4 + Math.random() * 4) + 's';
+  particlesEl.appendChild(p);
+}
+
+// Load data
 fetch('momir-cards.json')
   .then(r => r.json())
   .then(data => {
     cardData = data;
-    const total = Object.values(data).reduce((s, a) => s + a.length, 0);
-    setStatus(`Ready. ${total} creatures loaded.`);
-    buildButtons();
+    setStatus('ready');
   })
-  .catch(e => setStatus('Failed to load card data: ' + e.message, 'error'));
+  .catch(e => setStatus('failed to load: ' + e.message, true));
 
-function buildButtons() {
-  const grid = document.getElementById('grid');
-  const cmcs = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
-  cmcs.forEach(cmc => {
-    const btn = document.createElement('button');
-    btn.className = 'btn';
-    btn.textContent = cmc;
-    btn.disabled = !cardData[String(cmc)] || cardData[String(cmc)].length === 0;
-    btn.addEventListener('click', () => activate(cmc));
-    grid.appendChild(btn);
-  });
-}
-
-function setStatus(msg, cls) {
+function setStatus(msg, err) {
   const el = document.getElementById('status');
   el.textContent = msg;
-  el.className = cls || '';
+  el.className = err ? 'error' : '';
 }
 
-function setButtons(disabled) {
-  document.querySelectorAll('.btn').forEach(b => b.disabled = disabled);
+// Orb swipe
+const orb = document.getElementById('orb');
+const orbNum = document.getElementById('orb-number');
+
+function updateOrb() {
+  orbNum.textContent = cmc;
 }
 
-async function activate(cmc) {
+let pointerDown = false;
+let hasMoved = false;
+
+orb.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  pointerDown = true;
+  hasMoved = false;
+  swipeStartX = e.clientX;
+  swipeStartCmc = cmc;
+  orb.setPointerCapture(e.pointerId);
+  startCasting();
+});
+
+orb.addEventListener('pointermove', (e) => {
+  if (!pointerDown) return;
+  const dx = e.clientX - swipeStartX;
+  if (Math.abs(dx) > 15) {
+    hasMoved = true;
+    cancelCasting();
+    const steps = Math.round(dx / 40);
+    cmc = Math.max(CMC_MIN, Math.min(CMC_MAX, swipeStartCmc + steps));
+    updateOrb();
+  }
+});
+
+orb.addEventListener('pointerup', (e) => {
+  pointerDown = false;
+  if (hasMoved) cancelCasting();
+});
+
+orb.addEventListener('pointercancel', () => {
+  pointerDown = false;
+  cancelCasting();
+});
+
+// Casting (hold)
+let castStart = 0;
+function startCasting() {
+  if (casting) return;
+  castStart = Date.now();
+  growInterval = setInterval(() => {
+    const elapsed = Date.now() - castStart;
+    const progress = Math.min(elapsed / CAST_TIME, 1);
+    const scale = 1 + progress * 0.4;
+    orb.style.transform = `scale(${scale})`;
+    if (progress > 0.2) orb.classList.add('charging');
+    if (progress >= 1) {
+      cancelCasting();
+      cast();
+    }
+  }, 16);
+}
+
+function cancelCasting() {
+  clearInterval(growInterval);
+  orb.classList.remove('charging');
+  orb.style.transform = '';
+}
+
+// Cast spell
+async function cast() {
+  if (casting) return;
+  casting = true;
+
   const pool = cardData[String(cmc)];
-  if (!pool || pool.length === 0) return;
+  if (!pool || pool.length === 0) {
+    setStatus('no creatures at cmc ' + cmc, true);
+    casting = false;
+    return;
+  }
 
-  setButtons(true);
   const card = pool[Math.floor(Math.random() * pool.length)];
-  document.getElementById('card-name').textContent = card.name;
-  setStatus('Fetching image...', 'loading');
+
+  // Burst the orb
+  orb.classList.add('burst');
+  document.querySelector('.orb-hint').style.opacity = '0';
+
+  setStatus('summoning ' + card.name + '...');
 
   try {
+    // Load color image
     const img = await loadImage(card.img);
-    setStatus('Dithering...', 'loading');
-    await new Promise(r => setTimeout(r, 10)); // let UI update
-    const dithered = ditherImage(img);
 
+    // Show color card
+    const cardEl = document.getElementById('card-reveal');
+    cardEl.src = card.img;
+    cardEl.className = 'visible';
+
+    const nameEl = document.getElementById('card-name-overlay');
+    nameEl.textContent = card.name;
+    nameEl.className = 'visible';
+
+    // Wait, then fade to dithered
+    await sleep(1500);
+    const ditheredUrl = ditherImage(img);
+    cardEl.classList.add('dithered');
+    cardEl.src = ditheredUrl;
+
+    // Print
     if (mode === 'rawbt') {
-      setStatus('Printing...', 'printing');
-      await printRawBT(dithered);
+      setStatus('printing...');
+      await printRawBT(ditheredUrl);
     }
 
-    showPreview(dithered);
-    setStatus(`Printed: ${card.name}`);
+    // Fly away
+    await sleep(1200);
+    cardEl.classList.remove('visible', 'dithered');
+    cardEl.classList.add('flyaway');
+    nameEl.className = '';
+
+    await sleep(600);
+    cardEl.className = '';
+    cardEl.src = '';
+
+    setStatus('ready');
   } catch (e) {
-    setStatus('Error: ' + e.message, 'error');
+    setStatus(e.message, true);
   }
-  setButtons(false);
+
+  // Bring orb back
+  const container = document.getElementById('orb-container');
+  orb.classList.remove('burst');
+  orb.style.transform = '';
+  container.classList.add('entering');
+  document.querySelector('.orb-hint').style.opacity = '';
+  setTimeout(() => container.classList.remove('entering'), 600);
+
+  casting = false;
 }
 
 function loadImage(url) {
@@ -194,67 +411,47 @@ function ditherImage(img) {
   canvas.width = PRINTER_WIDTH;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
-
-  // Draw and get pixels
   ctx.drawImage(img, 0, 0, PRINTER_WIDTH, h);
   const imageData = ctx.getImageData(0, 0, PRINTER_WIDTH, h);
   const pixels = imageData.data;
-
-  // Convert to grayscale with contrast
-  const gray = new Float32Array(PRINTER_WIDTH * h);
+  const w = PRINTER_WIDTH;
+  const gray = new Float32Array(w * h);
   for (let i = 0; i < gray.length; i++) {
-    const r = pixels[i * 4], g = pixels[i * 4 + 1], b = pixels[i * 4 + 2];
-    let v = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    // Apply contrast
-    v = ((v - 0.5) * CONTRAST + 0.5);
+    let v = (0.299 * pixels[i*4] + 0.587 * pixels[i*4+1] + 0.114 * pixels[i*4+2]) / 255;
+    v = (v - 0.5) * CONTRAST + 0.5;
     gray[i] = Math.max(0, Math.min(1, v)) * 255;
   }
-
-  // Floyd-Steinberg dithering
-  const w = PRINTER_WIDTH;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const idx = y * w + x;
-      const old = gray[idx];
+      const i = y * w + x;
+      const old = gray[i];
       const val = old >= 128 ? 255 : 0;
-      gray[idx] = val;
+      gray[i] = val;
       const err = old - val;
-      if (x + 1 < w) gray[idx + 1] += err * 7 / 16;
+      if (x + 1 < w) gray[i + 1] += err * 7 / 16;
       if (y + 1 < h) {
-        if (x > 0) gray[(y + 1) * w + x - 1] += err * 3 / 16;
-        gray[(y + 1) * w + x] += err * 5 / 16;
-        if (x + 1 < w) gray[(y + 1) * w + x + 1] += err * 1 / 16;
+        if (x > 0) gray[(y+1)*w + x-1] += err * 3 / 16;
+        gray[(y+1)*w + x] += err * 5 / 16;
+        if (x + 1 < w) gray[(y+1)*w + x+1] += err * 1 / 16;
       }
     }
   }
-
-  // Write back to canvas as 1-bit black/white
   for (let i = 0; i < gray.length; i++) {
     const v = gray[i] >= 128 ? 255 : 0;
-    pixels[i * 4] = pixels[i * 4 + 1] = pixels[i * 4 + 2] = v;
-    pixels[i * 4 + 3] = 255;
+    pixels[i*4] = pixels[i*4+1] = pixels[i*4+2] = v;
+    pixels[i*4+3] = 255;
   }
   ctx.putImageData(imageData, 0, 0);
   return canvas.toDataURL('image/png');
 }
 
-function showPreview(dataUrl) {
-  const preview = document.getElementById('preview');
-  preview.src = dataUrl;
-  preview.style.display = 'block';
-}
-
 function printRawBT(dataUrl) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket('ws://localhost:40213/');
-    socket.onerror = () => reject(new Error('RawBT not connected. Is the app running?'));
+    socket.onerror = () => reject(new Error('RawBT not connected'));
     socket.onopen = () => {
       socket.send(JSON.stringify({
-        commands: [{
-          command: 'image',
-          base64: dataUrl.split(',')[1],
-          attributesImage: {}
-        }]
+        commands: [{ command: 'image', base64: dataUrl.split(',')[1], attributesImage: {} }]
       }));
     };
     socket.onmessage = (event) => {
@@ -265,13 +462,14 @@ function printRawBT(dataUrl) {
   });
 }
 
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
 // Mode toggle
 document.getElementById('mode-toggle').addEventListener('click', () => {
   mode = mode === 'rawbt' ? 'show' : 'rawbt';
   localStorage.setItem('momir-mode', mode);
-  document.getElementById('mode-label').textContent = mode.toUpperCase();
+  document.getElementById('mode-text').textContent = mode.toUpperCase();
 });
-document.getElementById('mode-label').textContent = mode.toUpperCase();
 </script>
 </body>
 </html>
