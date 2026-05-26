@@ -18,7 +18,7 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
     await expect(particles).toHaveCount(30);
 
     // Card is not visible initially
-    await expect(page.locator('#card-reveal')).not.toBeVisible();
+    await expect(page.locator('#card-color')).not.toBeVisible();
 
     // Status shows ready
     await expect(page.locator('#status')).toHaveText('ready');
@@ -123,7 +123,7 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
     // Orb should still be visible (no burst)
     await expect(orb).not.toHaveClass(/burst/);
     // Card should not appear
-    await expect(page.locator('#card-reveal')).not.toBeVisible();
+    await expect(page.locator('#card-color')).not.toHaveClass(/visible/);
   });
 
   test('8. Full cast: hold triggers burst, card appears in color', async ({ page }) => {
@@ -162,7 +162,9 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
     await expect(page.locator('#status')).toHaveText('ready', { timeout: 10000 });
 
     const orb = page.locator('#orb');
-    const cardEl = page.locator('#card-reveal');
+    const colorEl = page.locator('#card-color');
+    const ditheredEl = page.locator('#card-dithered');
+    const wrapper = page.locator('#card-wrapper');
     const nameEl = page.locator('#card-name-overlay');
     const box = await orb.boundingBox();
     const cx = box.x + box.width / 2;
@@ -176,9 +178,9 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
     // Orb bursts
     await expect(orb).toHaveClass(/burst/, { timeout: 3000 });
 
-    // Card appears (color) with visible class
-    await expect(cardEl).toHaveClass(/visible/, { timeout: 5000 });
-    const colorSrc = await cardEl.getAttribute('src');
+    // Color card appears
+    await expect(colorEl).toHaveClass(/visible/, { timeout: 5000 });
+    const colorSrc = await colorEl.getAttribute('src');
     expect(colorSrc).toContain('scryfall.io');
 
     // Card name appears
@@ -186,17 +188,16 @@ test.describe('The Momir Machine - Full Interaction Flow', () => {
     const name = await nameEl.textContent();
     expect(name.length).toBeGreaterThan(0);
 
-    // Wait for dither transition
-    await expect(cardEl).toHaveClass(/dithered/, { timeout: 8000 });
-    const ditheredSrc = await cardEl.getAttribute('src');
+    // Dithered card fades in on top
+    await expect(ditheredEl).toHaveClass(/visible/, { timeout: 8000 });
+    const ditheredSrc = await ditheredEl.getAttribute('src');
     expect(ditheredSrc).toContain('data:image/png');
 
-    // Wait for fly away
-    await expect(cardEl).toHaveClass(/flyaway/, { timeout: 5000 });
+    // Card flies off the top
+    await expect(wrapper).toHaveClass(/flyaway/, { timeout: 5000 });
 
     // Orb returns
-    await page.waitForTimeout(800);
-    await expect(orb).not.toHaveClass(/burst/);
+    await expect(orb).not.toHaveClass(/burst/, { timeout: 3000 });
     await expect(orb).toBeVisible();
 
     // Status returns to ready

@@ -123,26 +123,33 @@ body {
   pointer-events: none;
   z-index: 10;
 }
-#card-reveal {
+#card-wrapper {
+  position: relative;
   width: 280px;
-  max-height: 80vh;
+  transition: transform 0.8s ease-in, opacity 0.6s;
+}
+#card-wrapper.flyaway {
+  transform: translateY(-120vh) scale(0.5);
+  opacity: 0;
+}
+#card-color, #card-dithered {
+  width: 100%;
   border-radius: 8px;
+  box-shadow: 0 0 60px #4fc3a044;
   opacity: 0;
   transform: scale(0.8);
   transition: opacity 0.4s, transform 0.4s;
-  box-shadow: 0 0 60px #4fc3a044;
 }
-#card-reveal.visible {
+#card-color.visible, #card-dithered.visible {
   opacity: 1;
   transform: scale(1);
 }
-#card-reveal.dithered {
+#card-dithered {
+  position: absolute;
+  top: 0;
+  left: 0;
   transition: opacity 1.5s;
-}
-#card-reveal.flyaway {
-  transition: transform 0.6s ease-in, opacity 0.6s;
-  transform: translateY(-120vh) scale(0.5);
-  opacity: 0;
+  image-rendering: pixelated;
 }
 
 /* Card name overlay */
@@ -201,7 +208,10 @@ body {
 </div>
 
 <div id="card-container">
-  <img id="card-reveal" alt="">
+  <div id="card-wrapper">
+    <img id="card-color" alt="">
+    <img id="card-dithered" alt="">
+  </div>
 </div>
 <div id="card-name-overlay"></div>
 
@@ -345,19 +355,22 @@ async function cast() {
     const img = await loadImage(card.img);
 
     // Show color card
-    const cardEl = document.getElementById('card-reveal');
-    cardEl.src = card.img;
-    cardEl.className = 'visible';
+    const wrapper = document.getElementById('card-wrapper');
+    const colorEl = document.getElementById('card-color');
+    const ditheredEl = document.getElementById('card-dithered');
+    colorEl.src = card.img;
+    colorEl.classList.add('visible');
 
     const nameEl = document.getElementById('card-name-overlay');
     nameEl.textContent = card.name;
     nameEl.className = 'visible';
 
-    // Wait, then fade to dithered
+    // Wait, then crossfade to dithered
     await sleep(1500);
     const ditheredUrl = ditherImage(img);
-    cardEl.classList.add('dithered');
-    cardEl.src = ditheredUrl;
+    ditheredEl.src = ditheredUrl;
+    ditheredEl.classList.add('visible');
+    colorEl.style.opacity = '0';
 
     // Print
     if (mode === 'rawbt') {
@@ -366,14 +379,18 @@ async function cast() {
     }
 
     // Fly away
-    await sleep(1200);
-    cardEl.classList.remove('visible', 'dithered');
-    cardEl.classList.add('flyaway');
+    await sleep(1500);
+    wrapper.classList.add('flyaway');
     nameEl.className = '';
 
-    await sleep(600);
-    cardEl.className = '';
-    cardEl.src = '';
+    await sleep(800);
+    // Reset
+    wrapper.classList.remove('flyaway');
+    colorEl.classList.remove('visible');
+    colorEl.style.opacity = '';
+    colorEl.src = '';
+    ditheredEl.classList.remove('visible');
+    ditheredEl.src = '';
 
     setStatus('ready');
   } catch (e) {
