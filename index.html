@@ -76,6 +76,7 @@ body {
   user-select: none;
   transition: transform 0.3s, box-shadow 0.3s, border-color 0.3s;
   position: relative;
+  perspective: 300px;
 }
 #orb.charging {
   border-color: #4fc3a0;
@@ -103,6 +104,8 @@ body {
   color: #4fc3a0;
   text-shadow: 0 0 10px #4fc3a044;
   pointer-events: none;
+  transform-style: preserve-3d;
+  transition: transform 0.3s ease-out;
 }
 .orb-hint {
   position: absolute;
@@ -216,7 +219,7 @@ body {
 
 <div id="status">loading...</div>
 <div id="mode-toggle">⚙ <span id="mode-text">RAWBT</span></div>
-<div style="position:fixed;bottom:1rem;left:1rem;font-size:0.7rem;color:#4fc3a0;letter-spacing:0.1em;">v0.1.3</div>
+<div style="position:fixed;bottom:1rem;left:1rem;font-size:0.7rem;color:#4fc3a0;letter-spacing:0.1em;">v0.1.4</div>
 
 <canvas id="dither-canvas" style="display:none"></canvas>
 
@@ -292,18 +295,29 @@ orb.addEventListener('pointermove', (e) => {
     hasMoved = true;
     cancelCasting();
     const steps = Math.round(dx / 40);
-    cmc = Math.max(CMC_MIN, Math.min(CMC_MAX, swipeStartCmc - steps));
-    updateOrb();
+    const newCmc = Math.max(CMC_MIN, Math.min(CMC_MAX, swipeStartCmc - steps));
+    // Rotate orb based on drag distance
+    const rotation = Math.max(-45, Math.min(45, dx * 0.5));
+    orb.style.transform = `rotateY(${rotation}deg)`;
+    orbNum.style.transform = `rotateY(${rotation * 0.3}deg) translateZ(10px)`;
+    if (newCmc !== cmc) {
+      cmc = newCmc;
+      updateOrb();
+    }
   }
 });
 
 orb.addEventListener('pointerup', (e) => {
   pointerDown = false;
+  orb.style.transform = '';
+  orbNum.style.transform = '';
   if (hasMoved) cancelCasting();
 });
 
 orb.addEventListener('pointercancel', () => {
   pointerDown = false;
+  orb.style.transform = '';
+  orbNum.style.transform = '';
   cancelCasting();
 });
 
