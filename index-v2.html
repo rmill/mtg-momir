@@ -3,9 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<link href="https://fonts.googleapis.com/css2?family=Uncial+Antiqua&display=swap" rel="stylesheet">
 <title>The Momir Machine</title>
 <style>
+@font-face {
+  font-family: 'Uncial Antiqua';
+  src: url('UncialAntiqua.ttf') format('truetype');
+  font-display: block;
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body {
   height: 100%;
@@ -229,19 +233,18 @@ body {
   const gl = nc.getContext('webgl');
   if (!gl) return;
 
-  const isMobile = window.innerWidth < 768;
-  const scale = isMobile ? 0.25 : 0.5;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
   function resize() {
-    nc.width = window.innerWidth * scale;
-    nc.height = window.innerHeight * scale;
+    nc.width = window.innerWidth * dpr;
+    nc.height = window.innerHeight * dpr;
     gl.viewport(0, 0, nc.width, nc.height);
   }
   resize();
   window.addEventListener('resize', resize);
 
   const vs = `attribute vec2 p;void main(){gl_Position=vec4(p,0,1);}`;
-  const octaves = isMobile ? 3 : 5;
+  const octaves = 3;
   const fs = `
 precision mediump float;
 uniform float t;
@@ -249,7 +252,7 @@ uniform vec2 r;
 uniform vec3 col;
 
 vec3 mod289(vec3 x){return x-floor(x*(1./289.))*289.;}
-vec2 mod289(vec2 x){return x-floor(x*(1./289.))*289.;}
+vec2 mod289v2(vec2 x){return x-floor(x*(1./289.))*289.;}
 vec3 permute(vec3 x){return mod289((x*34.+1.)*x);}
 
 float snoise(vec2 v){
@@ -259,7 +262,7 @@ float snoise(vec2 v){
   vec2 i1=x0.x>x0.y?vec2(1,0):vec2(0,1);
   vec4 x12=x0.xyxy+C.xxzz;
   x12.xy-=i1;
-  i=mod289(i);
+  i=mod289v2(i);
   vec3 p=permute(permute(i.y+vec3(0,i1.y,1.))+i.x+vec3(0,i1.x,1.));
   vec3 m=max(.5-vec3(dot(x0,x0),dot(x12.xy,x12.xy),dot(x12.zw,x12.zw)),0.);
   m=m*m;m=m*m;
@@ -275,7 +278,7 @@ float snoise(vec2 v){
 
 float fbm(vec2 p){
   float f=0.,a=.5;
-  for(int i=0;i<` + octaves + `;i++){
+  for(int i=0;i<3;i++){
     f+=a*snoise(p);
     p*=2.1;a*=.48;
   }
@@ -284,37 +287,23 @@ float fbm(vec2 p){
 
 void main(){
   vec2 uv=gl_FragCoord.xy/r;
-  // Only bottom half, fade in from middle
   float mask=smoothstep(0.6,0.0,uv.y);
   
   vec2 p=uv*3.0;
-  p.x*=r.x/r.y;
+  p*=vec2(r.x,r.y)/max(r.x,r.y);
   
   float n=fbm(p+vec2(t*0.02,t*0.01));
-  n+=0.5*fbm(p*2.0+vec2(-t*0.03,t*0.015));
-  
-  float intensity=smoothstep(-0.8,1.0,n)*mask*3.16;
+  float intensity=smoothstep(-0.5,1.0,n)*mask*3.0;
   vec3 c=col*intensity;
-  // Add slight purple/blue variation
-  c+=vec3(0.02,0.0,0.04)*fbm(p*1.5+vec2(t*0.01,-t*0.02))*mask;
   
-  // Second layer — offset, darker shade
   float n2=fbm(p*1.3+vec2(-t*0.015,t*0.025)+3.7);
-  n2+=0.5*fbm(p*2.5+vec2(t*0.02,-t*0.01)+5.2);
-  float intensity2=smoothstep(-0.8,1.0,n2)*mask*2.5;
-  vec3 c2=col*0.4*intensity2;
-  c2+=vec3(0.04,0.01,0.06)*fbm(p*1.8+vec2(-t*0.015,t*0.03)+2.0)*mask;
+  float intensity2=smoothstep(-0.5,1.0,n2)*mask*2.0;
+  c+=col*0.5*intensity2;
   
-  c+=c2;
-  
-  // Third layer — bright highlights with complementary color
-  ` + (isMobile ? '' : `
   float n3=fbm(p*0.8+vec2(t*0.01,-t*0.018)+7.3);
-  n3+=0.5*fbm(p*1.6+vec2(-t*0.025,t*0.012)+9.1);
   float intensity3=smoothstep(0.2,1.0,n3)*mask*1.2;
-  vec3 compCol=vec3(col.z,col.x,col.y)*0.8+vec3(1.0-col.x,1.0-col.y,1.0-col.z)*0.4;
-  vec3 c3=mix(col,compCol,0.25)*1.5*intensity3;
-  c+=c3;`) + `
+  vec3 compCol=vec3(col.z,col.x,col.y)*0.6+col*0.4;
+  c+=compCol*intensity3;
   
   gl_FragColor=vec4(c,1.0);
 }`;
@@ -323,12 +312,18 @@ void main(){
     const s = gl.createShader(type);
     gl.shaderSource(s, src);
     gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      console.error('Shader compile error:', gl.getShaderInfoLog(s));
+    }
     return s;
   }
   const prog = gl.createProgram();
   gl.attachShader(prog, compile(vs, gl.VERTEX_SHADER));
   gl.attachShader(prog, compile(fs, gl.FRAGMENT_SHADER));
   gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.error('Program link error:', gl.getProgramInfoLog(prog));
+  }
   gl.useProgram(prog);
 
   const buf = gl.createBuffer();
@@ -590,6 +585,7 @@ function setThemeColor(hex) {
   pointLight.color.setHex(hex);
   glowMat.color.setHex(hex);
   ring.material.color.setHex(hex);
+  document.getElementById('mode-toggle').style.color = '#' + hex.toString(16).padStart(6, '0') + 'aa';
   drawCmcTexture(cmc);
   drawBackCmcTexture(Math.min(CMC_MAX, cmc + 1));
 }
