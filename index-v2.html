@@ -8,33 +8,33 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body {
   height: 100%;
+  width: 100%;
   overflow: hidden;
   touch-action: none;
+  overscroll-behavior: none;
 }
 body {
   font-family: 'Georgia', serif;
   background: #050a12;
   color: #e0e0e0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   position: relative;
+  height: 100%;
+  width: 100%;
 }
 
 #nebula-canvas {
-  position: absolute;
-  inset: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   z-index: 0;
 }
 
 #orb-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
   z-index: 1;
 }
 
@@ -189,15 +189,19 @@ body {
   const gl = nc.getContext('webgl');
   if (!gl) return;
 
+  const isMobile = window.innerWidth < 768;
+  const scale = isMobile ? 0.25 : 0.5;
+
   function resize() {
-    nc.width = window.innerWidth * 0.5;
-    nc.height = window.innerHeight * 0.5;
+    nc.width = window.innerWidth * scale;
+    nc.height = window.innerHeight * scale;
     gl.viewport(0, 0, nc.width, nc.height);
   }
   resize();
   window.addEventListener('resize', resize);
 
   const vs = `attribute vec2 p;void main(){gl_Position=vec4(p,0,1);}`;
+  const octaves = isMobile ? 3 : 5;
   const fs = `
 precision mediump float;
 uniform float t;
@@ -231,7 +235,7 @@ float snoise(vec2 v){
 
 float fbm(vec2 p){
   float f=0.,a=.5;
-  for(int i=0;i<5;i++){
+  for(int i=0;i<` + octaves + `;i++){
     f+=a*snoise(p);
     p*=2.1;a*=.48;
   }
@@ -264,12 +268,13 @@ void main(){
   c+=c2;
   
   // Third layer — bright highlights with complementary color
+  ` + (isMobile ? '' : `
   float n3=fbm(p*0.8+vec2(t*0.01,-t*0.018)+7.3);
   n3+=0.5*fbm(p*1.6+vec2(-t*0.025,t*0.012)+9.1);
   float intensity3=smoothstep(0.2,1.0,n3)*mask*1.2;
   vec3 compCol=vec3(col.z,col.x,col.y)*0.8+vec3(1.0-col.x,1.0-col.y,1.0-col.z)*0.4;
   vec3 c3=mix(col,compCol,0.25)*1.5*intensity3;
-  c+=c3;
+  c+=c3;`) + `
   
   gl_FragColor=vec4(c,1.0);
 }`;
