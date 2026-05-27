@@ -54,12 +54,24 @@ body {
   width: 280px;
 }
 #card-wrapper.flyaway {
-  animation: arcAwayZ 1.6s cubic-bezier(0.2, 0, 0.8, 1) forwards;
+  animation: arcAwayZ 1.6s cubic-bezier(0.2, 0, 0.8, 1) forwards, cardSpin 1.6s linear forwards;
 }
 @keyframes arcAwayZ {
   0%   { transform: translateZ(0); opacity: 1; }
   30%  { transform: translateZ(-12000px); opacity: 0.5; }
   100% { transform: translateZ(-50000px); opacity: 0; }
+}
+@keyframes cardSpin {
+  0%   { rotate: 0deg; }
+  100% { rotate: 720deg; }
+}
+#card-wrapper.shaking {
+  animation: cardShake 0.05s infinite alternate;
+  --shake: 1px;
+}
+@keyframes cardShake {
+  0%   { transform: translate(calc(var(--shake) * -1), var(--shake)); }
+  100% { transform: translate(var(--shake), calc(var(--shake) * -1)); }
 }
 #card-color, #card-dithered {
   width: 100%;
@@ -184,7 +196,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.z = 7.9;
+camera.position.z = 8.7;
 
 // Sphere
 const geometry = new THREE.SphereGeometry(1, 64, 64);
@@ -488,6 +500,15 @@ async function cast() {
     await sleep(1500);
     colorEl.style.transition = 'opacity 1.5s';
     colorEl.style.opacity = '0';
+    wrapper.classList.add('shaking');
+    // Ramp shake intensity
+    let shakeFrame;
+    const shakeStart = Date.now();
+    (function rampShake() {
+      const t = Math.min((Date.now() - shakeStart) / 1500, 1);
+      wrapper.style.setProperty('--shake', (1 + t * 5.5) + 'px');
+      if (t < 1) shakeFrame = requestAnimationFrame(rampShake);
+    })();
 
     if (mode === 'rawbt') {
       setStatus('printing...');
@@ -495,6 +516,9 @@ async function cast() {
     }
 
     await sleep(1500);
+    cancelAnimationFrame(shakeFrame);
+    wrapper.classList.remove('shaking');
+    wrapper.style.removeProperty('--shake');
     const container = document.getElementById('card-container');
     // Randomize end position slightly
     const randX = (Math.random() - 0.5) * 40;
