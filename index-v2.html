@@ -22,6 +22,14 @@ body {
   position: relative;
 }
 
+#nebula-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
 #orb-canvas {
   position: absolute;
   inset: 0;
@@ -154,6 +162,7 @@ body {
 </head>
 <body>
 
+<canvas id="nebula-canvas"></canvas>
 <canvas id="orb-canvas"></canvas>
 
 <div id="card-container">
@@ -173,6 +182,132 @@ body {
 
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 <script>
+
+// --- Nebula Background ---
+(function() {
+  const nc = document.getElementById('nebula-canvas');
+  const gl = nc.getContext('webgl');
+  if (!gl) return;
+
+  function resize() {
+    nc.width = window.innerWidth * 0.5;
+    nc.height = window.innerHeight * 0.5;
+    gl.viewport(0, 0, nc.width, nc.height);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const vs = `attribute vec2 p;void main(){gl_Position=vec4(p,0,1);}`;
+  const fs = `
+precision mediump float;
+uniform float t;
+uniform vec2 r;
+uniform vec3 col;
+
+vec3 mod289(vec3 x){return x-floor(x*(1./289.))*289.;}
+vec2 mod289(vec2 x){return x-floor(x*(1./289.))*289.;}
+vec3 permute(vec3 x){return mod289((x*34.+1.)*x);}
+
+float snoise(vec2 v){
+  const vec4 C=vec4(.211324865,.366025404,-.577350269,.024390244);
+  vec2 i=floor(v+dot(v,C.yy));
+  vec2 x0=v-i+dot(i,C.xx);
+  vec2 i1=x0.x>x0.y?vec2(1,0):vec2(0,1);
+  vec4 x12=x0.xyxy+C.xxzz;
+  x12.xy-=i1;
+  i=mod289(i);
+  vec3 p=permute(permute(i.y+vec3(0,i1.y,1.))+i.x+vec3(0,i1.x,1.));
+  vec3 m=max(.5-vec3(dot(x0,x0),dot(x12.xy,x12.xy),dot(x12.zw,x12.zw)),0.);
+  m=m*m;m=m*m;
+  vec3 x=2.*fract(p*C.www)-1.;
+  vec3 h=abs(x)-.5;
+  vec3 a0=x-floor(x+.5);
+  m*=1.79284291400159-.85373472095314*(a0*a0+h*h);
+  vec3 g;
+  g.x=a0.x*x0.x+h.x*x0.y;
+  g.yz=a0.yz*x12.xz+h.yz*x12.yw;
+  return 130.*dot(m,g);
+}
+
+float fbm(vec2 p){
+  float f=0.,a=.5;
+  for(int i=0;i<5;i++){
+    f+=a*snoise(p);
+    p*=2.1;a*=.48;
+  }
+  return f;
+}
+
+void main(){
+  vec2 uv=gl_FragCoord.xy/r;
+  // Only bottom half, fade in from middle
+  float mask=smoothstep(0.6,0.0,uv.y);
+  
+  vec2 p=uv*3.0;
+  p.x*=r.x/r.y;
+  
+  float n=fbm(p+vec2(t*0.02,t*0.01));
+  n+=0.5*fbm(p*2.0+vec2(-t*0.03,t*0.015));
+  
+  float intensity=smoothstep(-0.8,1.0,n)*mask*3.16;
+  vec3 c=col*intensity;
+  // Add slight purple/blue variation
+  c+=vec3(0.02,0.0,0.04)*fbm(p*1.5+vec2(t*0.01,-t*0.02))*mask;
+  
+  // Second layer — offset, darker shade
+  float n2=fbm(p*1.3+vec2(-t*0.015,t*0.025)+3.7);
+  n2+=0.5*fbm(p*2.5+vec2(t*0.02,-t*0.01)+5.2);
+  float intensity2=smoothstep(-0.8,1.0,n2)*mask*2.5;
+  vec3 c2=col*0.4*intensity2;
+  c2+=vec3(0.04,0.01,0.06)*fbm(p*1.8+vec2(-t*0.015,t*0.03)+2.0)*mask;
+  
+  c+=c2;
+  
+  // Third layer — bright highlights with complementary color
+  float n3=fbm(p*0.8+vec2(t*0.01,-t*0.018)+7.3);
+  n3+=0.5*fbm(p*1.6+vec2(-t*0.025,t*0.012)+9.1);
+  float intensity3=smoothstep(0.2,1.0,n3)*mask*1.2;
+  vec3 compCol=vec3(col.z,col.x,col.y)*0.8+vec3(1.0-col.x,1.0-col.y,1.0-col.z)*0.4;
+  vec3 c3=mix(col,compCol,0.25)*1.5*intensity3;
+  c+=c3;
+  
+  gl_FragColor=vec4(c,1.0);
+}`;
+
+  function compile(src, type) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    return s;
+  }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(vs, gl.VERTEX_SHADER));
+  gl.attachShader(prog, compile(fs, gl.FRAGMENT_SHADER));
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+  const pLoc = gl.getAttribLocation(prog, 'p');
+  gl.enableVertexAttribArray(pLoc);
+  gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+
+  const tLoc = gl.getUniformLocation(prog, 't');
+  const rLoc = gl.getUniformLocation(prog, 'r');
+  const colLoc = gl.getUniformLocation(prog, 'col');
+
+  function render(time) {
+    gl.uniform1f(tLoc, time * 0.001);
+    gl.uniform2f(rLoc, nc.width, nc.height);
+    // Use theme color
+    const hex = typeof colors !== 'undefined' ? colors[colorIndex] : 0x4fc3a0;
+    gl.uniform3f(colLoc, ((hex>>16)&0xff)/255, ((hex>>8)&0xff)/255, (hex&0xff)/255);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+})();
 
 // --- Config ---
 const PRINTER_WIDTH = 576;
