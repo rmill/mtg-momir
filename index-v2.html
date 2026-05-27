@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<link href="https://fonts.googleapis.com/css2?family=Uncial+Antiqua&display=swap" rel="stylesheet">
 <title>The Momir Machine</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -22,6 +23,38 @@ body {
   width: 100%;
 }
 
+#orb-distortion {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 140px;
+  height: 140px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  z-index: 2;
+  pointer-events: none;
+  backdrop-filter: blur(10px) brightness(1.2);
+  -webkit-backdrop-filter: blur(10px) brightness(1.2);
+  background: rgba(255,255,255,0.02);
+}
+
+#ring-dim {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 20%, transparent 40%);
+}
+
+#screen-dim {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
 #nebula-canvas {
   position: fixed;
   top: 0;
@@ -35,7 +68,7 @@ body {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 1;
+  z-index: 6;
 }
 
 /* Card reveal */
@@ -116,33 +149,20 @@ body {
   left: 0;
 }
 
-/* Card name overlay */
-#card-name-overlay {
-  position: fixed;
-  bottom: 3rem;
-  font-size: 0.9rem;
-  color: #4fc3a0;
-  text-align: center;
-  opacity: 0;
-  transition: opacity 0.4s;
-  pointer-events: none;
-  text-shadow: 0 0 10px #4fc3a066;
-  letter-spacing: 0.05em;
-  z-index: 11;
-}
-#card-name-overlay.visible { opacity: 1; }
-
 /* Twinkle */
 #twinkle {
   position: fixed;
-  width: 8px;
-  height: 8px;
+  width: 16px;
+  height: 16px;
   background: #ffffff;
-  border-radius: 50%;
   pointer-events: none;
   z-index: 12;
   opacity: 0;
-  box-shadow: 0 0 6px #ffffff, 0 0 20px #ffffff;
+  clip-path: polygon(
+    50% 0%, 52% 48%, 100% 50%, 52% 52%,
+    50% 100%, 48% 52%, 0% 50%, 48% 48%
+  );
+  box-shadow: 0 0 10px #ffffff, 0 0 30px #ffffff;
 }
 #twinkle.visible {
   animation: twinkle 0.5s ease-out forwards;
@@ -170,15 +190,18 @@ body {
   top: 1rem;
   right: 1rem;
   font-size: 0.6rem;
-  color: #4fc3a033;
+  color: #4fc3a0aa;
   cursor: pointer;
-  z-index: 5;
+  z-index: 20;
 }
 </style>
 </head>
 <body>
 
 <canvas id="nebula-canvas"></canvas>
+<div id="orb-distortion"></div>
+<div id="ring-dim"></div>
+<div id="screen-dim"></div>
 <canvas id="orb-canvas"></canvas>
 
 <div id="card-container">
@@ -188,16 +211,16 @@ body {
     <img id="card-color" alt="">
   </div>
 </div>
-<div id="card-name-overlay"></div>
 <div id="twinkle"></div>
 
 <div id="status">loading...</div>
 <div id="mode-toggle">⚙ <span id="mode-text">RAWBT</span></div>
-<div style="position:fixed;bottom:1rem;left:1rem;font-size:0.7rem;color:#4fc3a0;letter-spacing:0.1em;z-index:5;">v0.3.0</div>
+<div style="position:fixed;bottom:1rem;left:1rem;font-size:0.7rem;color:#4fc3a0;letter-spacing:0.1em;z-index:5;">v0.4.0</div>
 
 <canvas id="dither-canvas" style="display:none"></canvas>
 
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script src="https://sdk.amazonaws.com/js/aws-sdk-2.1692.0.min.js"></script>
 <script>
 
 // --- Nebula Background ---
@@ -340,7 +363,8 @@ const CMC_MAX = 16;
 
 let cardData = null;
 let cmc = parseInt(localStorage.getItem('momir-cmc') || '5');
-let mode = localStorage.getItem('momir-mode') || 'rawbt';
+let mode = localStorage.getItem('momir-mode') || 'player';
+if (mode === 'rawbt') mode = 'host'; // migrate old setting
 let casting = false;
 
 document.getElementById('mode-text').textContent = mode.toUpperCase();
@@ -355,24 +379,79 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
 camera.position.z = 8.7;
 
-// Sphere
+// Sphere — glass orb with lightning
 const geometry = new THREE.SphereGeometry(1, 64, 64);
-const material = new THREE.MeshStandardMaterial({
-  color: 0x0a2a1f,
-  emissive: 0x4fc3a0,
-  emissiveIntensity: 0.15,
-  metalness: 0.3,
-  roughness: 0.4,
+const material = new THREE.ShaderMaterial({
+  transparent: true,
+  depthWrite: true,
+  uniforms: {
+    uTime: { value: 0 },
+    uColor: { value: new THREE.Color(0x4fc3a0) },
+    uEmissiveIntensity: { value: 0.15 },
+    uOpacity: { value: 1.0 },
+    uCameraPos: { value: new THREE.Vector3(0, 0, 8.7) }
+  },
+  vertexShader: `
+    varying vec3 vNormal;
+    varying vec3 vWorldPos;
+    varying vec3 vLocalPos;
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      vLocalPos = position;
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vWorldPos = wp.xyz;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform vec3 uColor;
+    uniform float uEmissiveIntensity;
+    uniform float uOpacity;
+    uniform vec3 uCameraPos;
+    varying vec3 vNormal;
+    varying vec3 vWorldPos;
+    varying vec3 vLocalPos;
+
+    void main() {
+      vec3 viewDir = normalize(uCameraPos - vWorldPos);
+      float fresnel = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 2.5);
+
+      // Glass rim
+      float rim = fresnel * 0.8;
+
+      // Inner glow
+      float core = (1.0 - fresnel) * uEmissiveIntensity * 0.5;
+
+      vec3 col = uColor * (rim + core) + vec3(1.0) * rim * 0.2;
+      float alpha = clamp((rim * 0.6 + core) * uOpacity, 0.0, 1.0);
+
+      gl_FragColor = vec4(col, alpha);
+    }
+  `
 });
+// Compatibility shims for animation code that uses material.emissiveIntensity/opacity/transparent
+Object.defineProperty(material, 'emissiveIntensity', {
+  get() { return material.uniforms.uEmissiveIntensity.value; },
+  set(v) { material.uniforms.uEmissiveIntensity.value = v; }
+});
+Object.defineProperty(material, 'opacity', {
+  get() { return material.uniforms.uOpacity.value; },
+  set(v) { material.uniforms.uOpacity.value = v; }
+});
+Object.defineProperty(material, 'emissive', {
+  get() { return { setHex(h) { material.uniforms.uColor.value.setHex(h); } }; }
+});
+
 const sphere = new THREE.Mesh(geometry, material);
 scene.add(sphere);
 
-// Wireframe overlay for texture
+// Thin glass shell highlight (hidden)
 const wireMat = new THREE.MeshBasicMaterial({
   color: 0x4fc3a0,
   wireframe: true,
   transparent: true,
-  opacity: 0.06,
+  opacity: 0.0,
 });
 const wireframe = new THREE.Mesh(new THREE.SphereGeometry(1.005, 32, 32), wireMat);
 sphere.add(wireframe);
@@ -402,13 +481,14 @@ const backCmcTexture = new THREE.CanvasTexture(backCmcCanvas);
 
 function drawBackCmcTexture(value) {
   backCmcCtx.clearRect(0, 0, 1024, 1024);
-  backCmcCtx.font = 'bold 480px Georgia';
+  backCmcCtx.font = '480px Uncial Antiqua';
   backCmcCtx.textAlign = 'center';
   backCmcCtx.textBaseline = 'middle';
   backCmcCtx.fillStyle = '#ffffff';
   backCmcCtx.shadowColor = '#ffffff';
   backCmcCtx.shadowBlur = 40;
-  backCmcCtx.fillText(String(value), 512, 480);
+  const yOff = (value === 6 || value === 8) ? 560 : 512;
+  backCmcCtx.fillText(String(value), 512, yOff);
   backCmcTexture.needsUpdate = true;
 }
 drawBackCmcTexture(Math.min(CMC_MAX, cmc + 1));
@@ -421,13 +501,14 @@ sphere.add(backPlane);
 
 function drawCmcTexture(value) {
   cmcCtx.clearRect(0, 0, 1024, 1024);
-  cmcCtx.font = 'bold 480px Georgia';
+  cmcCtx.font = '480px Uncial Antiqua';
   cmcCtx.textAlign = 'center';
   cmcCtx.textBaseline = 'middle';
   cmcCtx.fillStyle = '#ffffff';
   cmcCtx.shadowColor = '#ffffff';
   cmcCtx.shadowBlur = 40;
-  cmcCtx.fillText(String(value), 512, 480);
+  const yOff = (value === 6 || value === 8) ? 560 : 512;
+  cmcCtx.fillText(String(value), 512, yOff);
   cmcTexture.needsUpdate = true;
 }
 drawCmcTexture(cmc);
@@ -443,8 +524,26 @@ const glowMat = new THREE.MeshBasicMaterial({ color: 0x4fc3a0, transparent: true
 const ring = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.02, 16, 64), glowMat);
 scene.add(ring);
 
+// Dark disc to dim particles/nebula behind ring area
+const dimDisc = new THREE.Mesh(
+  new THREE.RingGeometry(1.35, 3.5, 64),
+  new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+    uniforms: {},
+    vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: `varying vec2 vUv; void main(){ float d=length(vUv-0.5)*2.0; float a=smoothstep(1.0,0.4,d)*0.85; gl_FragColor=vec4(0.0,0.0,0.0,a); }`
+  })
+);
+dimDisc.position.z = 0;
+dimDisc.renderOrder = 2;
+sphere.renderOrder = 0;
+ring.renderOrder = 3;
+ring.add(dimDisc);
+
 // Particles
-const particleCount = 80;
+const particleCount = 200;
 const particleGeo = new THREE.BufferGeometry();
 const positions = new Float32Array(particleCount * 3);
 const velocities = [];
@@ -460,6 +559,7 @@ for (let i = 0; i < particleCount; i++) {
 particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 const particleMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.03, transparent: true, opacity: 0.5 });
 const particles = new THREE.Points(particleGeo, particleMat);
+particles.renderOrder = 1;
 scene.add(particles);
 
 // --- Interaction State ---
@@ -583,11 +683,14 @@ function startCasting() {
   chargeProgress = 0;
 }
 
+const screenDim = document.getElementById('screen-dim');
+
 function cancelCasting() {
   chargeProgress = 0;
   castStart = 0;
   material.emissiveIntensity = 0.15;
   orbScale = 1;
+  screenDim.style.opacity = '0';
 }
 
 function updateCasting() {
@@ -596,6 +699,9 @@ function updateCasting() {
     orbScale += (1 - orbScale) * 0.05;
     material.emissiveIntensity += (0.15 - material.emissiveIntensity) * 0.05;
     pointLight.intensity += (2 - pointLight.intensity) * 0.05;
+    screenDim.style.opacity = parseFloat(screenDim.style.opacity || 0) * 0.95;
+    particleMat.opacity += (0.5 - particleMat.opacity) * 0.05;
+    glowMat.opacity += (0.08 - glowMat.opacity) * 0.05;
     return;
   }
   const elapsed = Date.now() - castStart;
@@ -604,6 +710,9 @@ function updateCasting() {
   orbScale = 1 + chargeProgress * 0.4;
   material.emissiveIntensity = 0.15 + chargeProgress * 0.85;
   pointLight.intensity = 2 + chargeProgress * 6;
+  screenDim.style.opacity = chargeProgress * 0.85;
+  particleMat.opacity = 0.5 * (1 - chargeProgress);
+  glowMat.opacity = 0.08 * (1 - chargeProgress);
   // Rumble — increases with charge
   if (chargeProgress > 0.1) {
     const intensity = chargeProgress * chargeProgress * 0.15;
@@ -635,6 +744,7 @@ async function cast() {
 
   // Burst: scale up and fade out
   orbVisible = false;
+  screenDim.style.opacity = '0';
   setStatus('summoning ' + card.name + '...');
 
   try {
@@ -662,10 +772,6 @@ async function cast() {
     glowEl.style.background = `conic-gradient(${stops})`;
     glowEl.classList.add('visible');
 
-    const nameEl = document.getElementById('card-name-overlay');
-    nameEl.textContent = card.name;
-    nameEl.className = 'visible';
-
     await sleep(3500);
     colorEl.style.transition = 'opacity 1.5s';
     colorEl.style.opacity = '0';
@@ -680,9 +786,13 @@ async function cast() {
       if (t < 1) shakeFrame = requestAnimationFrame(rampShake);
     })();
 
-    if (mode === 'rawbt') {
+    if (mode === 'rawbt' || mode === 'host') {
       setStatus('printing...');
       await printRawBT(ditheredUrl);
+    } else if (mode === 'player') {
+      setStatus('sending to printer...');
+      await sendToQueue(ditheredUrl);
+      setStatus('sent!');
     }
 
     await sleep(1500);
@@ -697,8 +807,6 @@ async function cast() {
     container.style.setProperty('--arc-y', randY + 'vh');
     wrapper.classList.add('flyaway');
     container.classList.add('flyaway');
-    nameEl.className = '';
-
     await sleep(1400);
     // Twinkle where the card vanished
     const twinkle = document.getElementById('twinkle');
@@ -727,9 +835,9 @@ async function cast() {
     setStatus(e.message, true);
   }
 
-  // Bring orb back
+  // Bring orb back with zoom-in
   orbVisible = true;
-  orbScale = 1;
+  orbScale = 0.01;
   material.emissiveIntensity = 0.15;
   pointLight.intensity = 2;
   sphere.position.set(0, 0, 0);
@@ -810,6 +918,7 @@ function animate() {
     }
   } else {
     burstPhase = 0;
+    if (orbScale < 0.99) orbScale += (1 - orbScale) * 0.08;
     sphere.scale.set(orbScale, orbScale, orbScale);
     material.opacity = 1;
     material.transparent = false;
@@ -830,6 +939,7 @@ function animate() {
   }
   particleGeo.attributes.position.needsUpdate = true;
 
+  material.uniforms.uTime.value = Date.now() * 0.001;
   renderer.render(scene, camera);
 }
 animate();
@@ -904,30 +1014,108 @@ function ditherImage(img) {
 }
 
 function printRawBT(dataUrl) {
+  console.log('[rawbt] connecting to ws://localhost:40213...');
   return new Promise((resolve, reject) => {
     const socket = new WebSocket('ws://localhost:40213/');
-    socket.onerror = () => reject(new Error('RawBT not connected'));
+    socket.onerror = () => { console.error('[rawbt] connection failed'); reject(new Error('RawBT not connected')); };
     socket.onopen = () => {
+      console.log('[rawbt] connected, sending image...');
       socket.send(JSON.stringify({
         commands: [{ command: 'image', base64: dataUrl.split(',')[1], attributesImage: {} }]
       }));
     };
     socket.onmessage = (event) => {
       const resp = JSON.parse(event.data);
+      console.log('[rawbt] response:', resp.responseType);
       if (resp.responseType === 'success') { socket.close(); resolve(); }
       else if (resp.responseType === 'error') { socket.close(); reject(new Error(resp.errorMessage)); }
     };
   });
 }
 
+// --- SQS Print Queue ---
+const SQS_REGION = 'us-east-1';
+const SQS_IDENTITY_POOL_ID = 'us-east-1:a63d89bf-ab22-476e-b64f-857d79a3a54f';
+const SQS_QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/479961807360/momir-print-queue';
+
+AWS.config.region = SQS_REGION;
+AWS.config.credentials = new AWS.CognitoIdentityCredentials({ IdentityPoolId: SQS_IDENTITY_POOL_ID });
+
+const sqs = new AWS.SQS();
+
+async function ensureCredentials() {
+  if (AWS.config.credentials.needsRefresh()) {
+    await AWS.config.credentials.refreshPromise();
+  } else if (!AWS.config.credentials.accessKeyId) {
+    await AWS.config.credentials.getPromise();
+  }
+}
+
+async function sendToQueue(dataUrl) {
+  await ensureCredentials();
+  console.log('[player] sending print job to SQS...');
+  const result = await sqs.sendMessage({
+    QueueUrl: SQS_QUEUE_URL,
+    MessageBody: dataUrl.split(',')[1]
+  }).promise();
+  console.log('[player] sent, MessageId:', result.MessageId);
+  return result;
+}
+
+let polling = false;
+function startHostPolling() {
+  if (polling) return;
+  polling = true;
+  console.log('[host] starting SQS polling...');
+  setStatus('host: listening...');
+  (async function poll() {
+    while (polling) {
+      try {
+        await ensureCredentials();
+        const resp = await sqs.receiveMessage({
+          QueueUrl: SQS_QUEUE_URL,
+          MaxNumberOfMessages: 1,
+          WaitTimeSeconds: 5
+        }).promise();
+        if (resp.Messages && resp.Messages.length > 0) {
+          const msg = resp.Messages[0];
+          console.log('[host] received message:', msg.MessageId);
+          setStatus('host: printing...');
+          await printRawBT('data:image/png;base64,' + msg.Body);
+          console.log('[host] printed, deleting message');
+          await sqs.deleteMessage({
+            QueueUrl: SQS_QUEUE_URL,
+            ReceiptHandle: msg.ReceiptHandle
+          }).promise();
+          setStatus('host: listening...');
+        }
+      } catch (e) {
+        console.error('[host] error:', e.message);
+        setStatus('host: ' + e.message, true);
+        await sleep(3000);
+      }
+    }
+  })();
+}
+
+function stopHostPolling() {
+  polling = false;
+}
+
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// Mode toggle
+// Mode toggle: show → player → host
+const modes = ['show', 'player', 'host'];
 document.getElementById('mode-toggle').addEventListener('click', () => {
-  mode = mode === 'rawbt' ? 'show' : 'rawbt';
+  const idx = (modes.indexOf(mode) + 1) % modes.length;
+  mode = modes[idx];
   localStorage.setItem('momir-mode', mode);
   document.getElementById('mode-text').textContent = mode.toUpperCase();
+  if (mode === 'host') startHostPolling();
+  else stopHostPolling();
 });
+// Start polling if loaded in host mode
+if (mode === 'host') startHostPolling();
 </script>
 </body>
 </html>
