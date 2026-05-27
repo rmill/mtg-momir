@@ -184,7 +184,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.z = 6.3;
+camera.position.z = 7.2;
 
 // Sphere
 const geometry = new THREE.SphereGeometry(1, 64, 64);
@@ -217,7 +217,7 @@ const cmcTexture = new THREE.CanvasTexture(cmcCanvas);
 cmcTexture.needsUpdate = true;
 
 const colors = [0x4fc3a0, 0xc34f7a, 0x4f8fc3, 0xc3a04f, 0xa04fc3];
-let colorIndex = 0;
+let colorIndex = parseInt(localStorage.getItem('momir-color') || '0');
 
 const spriteMat = new THREE.MeshBasicMaterial({ map: cmcTexture, transparent: true, depthTest: false });
 const cmcPlane = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), spriteMat);
@@ -324,6 +324,7 @@ function setThemeColor(hex) {
   drawCmcTexture(cmc);
   drawBackCmcTexture(Math.min(CMC_MAX, cmc + 1));
 }
+if (colorIndex > 0) setThemeColor(colors[colorIndex]);
 
 // --- Pointer Events ---
 canvas.addEventListener('pointerdown', (e) => {
@@ -334,6 +335,7 @@ canvas.addEventListener('pointerdown', (e) => {
   const now = Date.now();
   if (now - lastTapTime < 300) {
     colorIndex = (colorIndex + 1) % colors.length;
+    localStorage.setItem('momir-color', colorIndex);
     setThemeColor(colors[colorIndex]);
     lastTapTime = 0;
     return;
