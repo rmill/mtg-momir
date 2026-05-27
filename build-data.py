@@ -48,6 +48,7 @@ for card in cards:
     entry = {
         "name": card["name"],
         "img": card["image_uris"]["border_crop"],
+        "c": card.get("colors", []),
     }
 
     momir_cards.setdefault(cmc, []).append(entry)
