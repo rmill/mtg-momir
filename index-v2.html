@@ -170,7 +170,7 @@ const CMC_MIN = 0;
 const CMC_MAX = 16;
 
 let cardData = null;
-let cmc = 5;
+let cmc = parseInt(localStorage.getItem('momir-cmc') || '5');
 let mode = localStorage.getItem('momir-mode') || 'rawbt';
 let casting = false;
 
@@ -184,7 +184,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.z = 7.2;
+camera.position.z = 7.9;
 
 // Sphere
 const geometry = new THREE.SphereGeometry(1, 64, 64);
@@ -435,10 +435,11 @@ function updateCasting() {
   orbScale = 1 + chargeProgress * 0.4;
   material.emissiveIntensity = 0.15 + chargeProgress * 0.85;
   pointLight.intensity = 2 + chargeProgress * 6;
-  // Rumble
-  if (chargeProgress > 0.2) {
-    sphere.position.x = (Math.random() - 0.5) * 0.02 * chargeProgress;
-    sphere.position.y = (Math.random() - 0.5) * 0.02 * chargeProgress;
+  // Rumble — increases with charge
+  if (chargeProgress > 0.1) {
+    const intensity = chargeProgress * chargeProgress * 0.15;
+    sphere.position.x = (Math.random() - 0.5) * intensity;
+    sphere.position.y = (Math.random() - 0.5) * intensity;
   }
   if (chargeProgress >= 1) {
     cancelCasting();
@@ -587,6 +588,7 @@ function animate() {
     lastCmcRotation = halfSpins;
     if (newCmc !== cmc) {
       cmc = newCmc;
+      localStorage.setItem('momir-cmc', cmc);
       // The face now showing IS the current cmc (it was pre-written).
       // Update the face that just went to the back with the NEXT value in same direction.
       const nextCmc = Math.max(CMC_MIN, Math.min(CMC_MAX, cmc + delta));
