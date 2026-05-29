@@ -373,7 +373,7 @@ body {
     <label>Debug</label>
     <span id="debug-btn" class="settings-btn">OFF</span>
   </div>
-  <div class="settings-version">v1.1.2</div>
+  <div class="settings-version">v1.1.3</div>
 </div>
 
 <canvas id="dither-canvas" style="display:none"></canvas>
@@ -819,6 +819,7 @@ canvas.addEventListener('pointerup', () => {
   } else {
     // Released before cast fired — ease back
     castStart = 0;
+    sphere.position.set(0, 0, 0);
   }
 });
 
@@ -858,6 +859,7 @@ function cancelCasting() {
   castHoldStart = 0;
   material.emissiveIntensity = 0.15;
   orbScale = 1;
+  sphere.position.set(0, 0, 0);
 }
 
 function updateCasting() {
