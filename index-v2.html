@@ -347,8 +347,11 @@ body {
   <a href="https://magic.wizards.com/en/formats/momir-basic" target="_blank" style="font-size:0.65rem;color:var(--theme-dim);text-decoration:none;">How to Play ↗</a>
   <div style="font-size:0.6rem;color:#888;line-height:1.4;">
     Swipe to change CMC<br>
-    Hold to cast<br>
-    Double-tap to change color
+    Hold to cast
+  </div>
+  <div class="settings-item">
+    <label>Color</label>
+    <span><span id="color-prev" class="settings-btn">◀</span> <span id="color-next" class="settings-btn">▶</span></span>
   </div>
   <div class="settings-item">
     <label>Mode</label>
@@ -370,7 +373,7 @@ body {
     <label>Debug</label>
     <span id="debug-btn" class="settings-btn">OFF</span>
   </div>
-  <div class="settings-version">v1.0.9</div>
+  <div class="settings-version">v1.1.0</div>
 </div>
 
 <canvas id="dither-canvas" style="display:none"></canvas>
@@ -740,8 +743,6 @@ const MAX_VELOCITY = 0.02;
 const FRICTION = 0.80;
 
 // --- Color Themes ---
-let lastTapTime = 0;
-
 function setThemeColor(hex) {
   material.emissive.setHex(hex);
   wireMat.color.setHex(hex);
@@ -762,17 +763,6 @@ setThemeColor(colors[colorIndex]);
 canvas.addEventListener('pointerdown', (e) => {
   if (!orbVisible || casting) return;
   e.preventDefault();
-
-  // Double-tap detection
-  const now = Date.now();
-  if (now - lastTapTime < 300) {
-    colorIndex = (colorIndex + 1) % colors.length;
-    localStorage.setItem('momir-color', colorIndex);
-    setThemeColor(colors[colorIndex]);
-    lastTapTime = 0;
-    return;
-  }
-  lastTapTime = now;
 
   pointerDown = true;
   hasMoved = false;
@@ -1506,6 +1496,18 @@ modeSelect.addEventListener('change', () => {
 });
 
 // Debug console
+// Color cycle
+document.getElementById('color-next').addEventListener('click', () => {
+  colorIndex = (colorIndex + 1) % colors.length;
+  localStorage.setItem('momir-color', colorIndex);
+  setThemeColor(colors[colorIndex]);
+});
+document.getElementById('color-prev').addEventListener('click', () => {
+  colorIndex = (colorIndex - 1 + colors.length) % colors.length;
+  localStorage.setItem('momir-color', colorIndex);
+  setThemeColor(colors[colorIndex]);
+});
+
 // BLE connect
 document.getElementById('ble-btn').addEventListener('click', async () => {
   try {
