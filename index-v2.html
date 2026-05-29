@@ -373,7 +373,7 @@ body {
     <label>Debug</label>
     <span id="debug-btn" class="settings-btn">OFF</span>
   </div>
-  <div class="settings-version">v1.1.0</div>
+  <div class="settings-version">v1.1.1</div>
 </div>
 
 <canvas id="dither-canvas" style="display:none"></canvas>
@@ -734,8 +734,7 @@ let castHoldStart = 0;
 let chargeProgress = 0;
 let orbVisible = true;
 let orbScale = 1;
-let lastCmcRotation = 0; // tracks which full rotation we last changed CMC at
-let firstRotationDone = false;
+let lastCmcRotation = 0;
 let rotVelocity = 0;
 let lastPointerX = 0;
 let lastPointerTime = 0;
@@ -1199,11 +1198,6 @@ function animate(time) {
   // Update CMC once per half rotation (180°)
   const halfSpins = Math.floor(currentRotationY / Math.PI + 0.5);
   if (halfSpins !== lastCmcRotation) {
-    if (!firstRotationDone) {
-      // First rotation after load — sync state without changing CMC
-      firstRotationDone = true;
-      lastCmcRotation = halfSpins;
-    } else {
     const delta = halfSpins > lastCmcRotation ? 1 : -1;
     const newCmc = Math.max(CMC_MIN, Math.min(CMC_MAX, cmc + delta));
     lastCmcRotation = halfSpins;
@@ -1219,7 +1213,6 @@ function animate(time) {
       } else {
         drawCmcTexture(nextCmc);
       }
-    }
     }
   }
   ring.rotation.x = Math.sin(Date.now() * 0.001) * 0.3;
