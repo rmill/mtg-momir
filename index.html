@@ -361,11 +361,15 @@ body {
     <label>Printer</label>
     <span id="ble-btn" class="settings-btn">CONNECT</span>
   </div>
+  <div class="settings-item" id="purge-item" style="display:none">
+    <label>Queue</label>
+    <span id="purge-btn" class="settings-btn">CLEAR</span>
+  </div>
   <div class="settings-item">
     <label>Debug</label>
     <span id="debug-btn" class="settings-btn">OFF</span>
   </div>
-  <div class="settings-version">v1.0.8</div>
+  <div class="settings-version">v1.0.9</div>
 </div>
 
 <canvas id="dither-canvas" style="display:none"></canvas>
@@ -1489,11 +1493,13 @@ settingsOverlay.addEventListener('click', closeSettings);
 const modeSelect = document.getElementById('mode-select');
 modeSelect.value = mode;
 document.getElementById('printer-item').style.display = mode === 'host' ? 'flex' : 'none';
+document.getElementById('purge-item').style.display = mode === 'host' ? 'flex' : 'none';
 modeSelect.addEventListener('change', () => {
   mode = modeSelect.value;
   console.log('[settings] mode changed to ' + mode);
   localStorage.setItem('momir-mode', mode);
   document.getElementById('printer-item').style.display = mode === 'host' ? 'flex' : 'none';
+  document.getElementById('purge-item').style.display = mode === 'host' ? 'flex' : 'none';
   if (mode === 'host') startHostPolling();
   else stopHostPolling();
 });
@@ -1506,6 +1512,19 @@ document.getElementById('ble-btn').addEventListener('click', async () => {
   } catch (e) {
     console.error('[ble] connect failed:', e.message);
     document.getElementById('ble-btn').textContent = 'FAILED';
+  }
+});
+
+// Purge queue
+document.getElementById('purge-btn').addEventListener('click', async () => {
+  try {
+    await ensureCredentials();
+    await sqs.purgeQueue({ QueueUrl: SQS_QUEUE_URL }).promise();
+    console.log('[host] queue purged');
+    document.getElementById('purge-btn').textContent = 'CLEARED';
+    setTimeout(() => { document.getElementById('purge-btn').textContent = 'CLEAR'; }, 2000);
+  } catch (e) {
+    console.error('[host] purge failed:', e.message);
   }
 });
 
