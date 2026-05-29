@@ -6,7 +6,7 @@
 <title>Momir's Magic</title>
 <script>
 (function(){
-  var colors = [0x4fc3a0, 0xc34f7a, 0x4f8fc3, 0xc3a04f, 0xa04fc3, 0xff6b35, 0x35d0ff, 0xff3560, 0x60ff35, 0xffd700, 0xff35ff, 0x35ffb0, 0xffffff, 0x888888];
+  var colors = [0xa04fc3, 0x4fc3a0, 0xc34f7a, 0x4f8fc3, 0xc3a04f, 0xff6b35, 0x35d0ff, 0xff3560, 0x60ff35, 0xffd700, 0xff35ff, 0x35ffb0, 0xffffff, 0x888888];
   var i = parseInt(localStorage.getItem('momir-color') || '0');
   var hex = colors[i] || colors[0];
   var r = (hex>>16)&0xff, g = (hex>>8)&0xff, b = hex&0xff;
@@ -368,7 +368,7 @@ body {
     <label>Debug</label>
     <span id="debug-btn" class="settings-btn">OFF</span>
   </div>
-  <div class="settings-version">v1.0.3</div>
+  <div class="settings-version">v1.0.4</div>
 </div>
 
 <canvas id="dither-canvas" style="display:none"></canvas>
@@ -618,7 +618,7 @@ const cmcCtx = cmcCanvas.getContext('2d');
 const cmcTexture = new THREE.CanvasTexture(cmcCanvas);
 cmcTexture.needsUpdate = true;
 
-const colors = [0x4fc3a0, 0xc34f7a, 0x4f8fc3, 0xc3a04f, 0xa04fc3, 0xff6b35, 0x35d0ff, 0xff3560, 0x60ff35, 0xffd700, 0xff35ff, 0x35ffb0, 0xffffff, 0x888888];
+const colors = [0xa04fc3, 0x4fc3a0, 0xc34f7a, 0x4f8fc3, 0xc3a04f, 0xff6b35, 0x35d0ff, 0xff3560, 0x60ff35, 0xffd700, 0xff35ff, 0x35ffb0, 0xffffff, 0x888888];
 let colorIndex = parseInt(localStorage.getItem('momir-color') || '0');
 
 const spriteMat = new THREE.MeshBasicMaterial({ map: cmcTexture, transparent: true, depthTest: false });
