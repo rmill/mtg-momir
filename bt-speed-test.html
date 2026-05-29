@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BT Speed Test</title>
+<style>
+body { font-family: monospace; background: #111; color: #0f0; padding: 1rem; }
+button { font-size: 1rem; padding: 0.5rem 1rem; margin: 0.3rem; cursor: pointer; }
+#log { white-space: pre-wrap; margin-top: 1rem; font-size: 0.75rem; max-height: 50vh; overflow-y: auto; }
+.error { color: #f44; }
+.success { color: #4f4; }
+.header { color: #ff0; }
+</style>
+</head>
+<body>
+<h2>BT Speed Benchmark</h2>
+<button id="connect">Connect</button>
+<button id="run" disabled>Run All Tests</button>
+<div id="log"></div>
+
+<script>
+const SERVICE_UUID = 'e7810a71-73ae-499d-8c15-faa9aef0c3f2';
+const CHAR_UUID = 'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f';
+// Alt characteristic to test
+const ALT_SERVICE = '49535343-fe7d-4ae5-8fa9-9fafd205e455';
+const ALT_CHAR = '49535343-8841-43f4-a8d4-ecbe34729bb3';
+
+let writeChar, altWriteChar, server;
+
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = cls || '';
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+document.getElementById('connect').addEventListener('click', async () => {
+  try {
+    log('Connecting...');
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE_UUID] }],
+      optionalServices: [ALT_SERVICE]
+    });
+    server = await device.gatt.connect();
+
+    const svc = await server.getPrimaryService(SERVICE_UUID);
+    writeChar = await svc.getCharacteristic(CHAR_UUID);
+
+    try {
+      const altSvc = await server.getPrimaryService(ALT_SERVICE);
+      altWriteChar = await altSvc.getCharacteristic(ALT_CHAR);
+      log('Both characteristics available', 'success');
+    } catch (e) {
+      log('Alt characteristic not available, using primary only');
+    }
+
+    document.getElementById('run').disabled = false;
+    log('Connected! Ready to benchmark.', 'success');
+  } catch (e) {
+    log('Error: ' + e.message, 'error');
+  }
+});
+
+// Build a test payload (~58KB, simulating a full card image)
+function buildTestData() {
+  const w = 576, h = 800;
+  const bytesPerRow = w / 8;
+  const commands = [0x1B, 0x40]; // init
+  commands.push(0x1D, 0x76, 0x30, 0x00,
+    bytesPerRow & 0xFF, (bytesPerRow >> 8) & 0xFF,
+    h & 0xFF, (h >> 8) & 0xFF);
+  // Fill with checkerboard pattern
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < bytesPerRow; x++) {
+      commands.push(y % 2 === 0 ? 0xAA : 0x55);
+    }
+  }
+  commands.push(0x1B, 0x64, 0x04, 0x1D, 0x56, 0x00); // feed + cut
+  return new Uint8Array(commands);
+}
+
+async function sendChunked(char, data, chunkSize, delay) {
+  for (let i = 0; i < data.length; i += chunkSize) {
+    const chunk = data.slice(i, i + chunkSize);
+    await char.writeValueWithoutResponse(chunk);
+    if (delay > 0 && i + chunkSize < data.length) await sleep(delay);
+  }
+}
+
+async function benchmark(label, char, data, chunkSize, delay) {
+  log(`  ${label}: chunk=${chunkSize}B, delay=${delay}ms ...`);
+  const start = Date.now();
+  try {
+    await sendChunked(char, data, chunkSize, delay);
+    const elapsed = ((Date.now() - start) / 1000).toFixed(2);
+    const kbps = ((data.length / 1024) / (elapsed)).toFixed(1);
+    log(`  ✓ ${elapsed}s (${kbps} KB/s)`, 'success');
+    return { chunkSize, delay, elapsed: parseFloat(elapsed), kbps: parseFloat(kbps) };
+  } catch (e) {
+    const elapsed = ((Date.now() - start) / 1000).toFixed(2);
+    log(`  ✗ FAILED at ${elapsed}s: ${e.message}`, 'error');
+    return null;
+  }
+}
+
+document.getElementById('run').addEventListener('click', async () => {
+  const data = buildTestData();
+  log(`\nPayload: ${(data.length / 1024).toFixed(1)} KB (576x800 checkerboard)`, 'header');
+  log('Each test prints a full page. Wait for printing to finish between tests.\n', 'header');
+
+  const tests = [
+    [100, 20],
+    [100, 5],
+    [100, 0],
+    [200, 5],
+    [200, 0],
+    [300, 0],
+    [400, 0],
+    [512, 0],
+  ];
+
+  const results = [];
+  for (const [chunk, delay] of tests) {
+    const r = await benchmark('Primary', writeChar, data, chunk, delay);
+    if (r) results.push(r);
+    await sleep(2000); // wait for printer to finish
+  }
+
+  if (altWriteChar) {
+    log('\n--- Alt Characteristic ---', 'header');
+    for (const [chunk, delay] of [[200, 0], [512, 0]]) {
+      const r = await benchmark('Alt', altWriteChar, data, chunk, delay);
+      if (r) results.push(r);
+      await sleep(2000);
+    }
+  }
+
+  log('\n=== RESULTS ===', 'header');
+  results.sort((a, b) => a.elapsed - b.elapsed);
+  for (const r of results) {
+    log(`  ${r.kbps} KB/s — chunk=${r.chunkSize}, delay=${r.delay}ms (${r.elapsed}s)`);
+  }
+  log('\nBest: ' + results[0].kbps + ' KB/s', 'success');
+});
+</script>
+</body>
+</html>

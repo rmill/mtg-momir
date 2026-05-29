@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Print QR Code</title>
+<style>
+body { font-family: monospace; background: #111; color: #0f0; padding: 1rem; }
+button { font-size: 1rem; padding: 0.5rem 1rem; margin: 0.3rem; cursor: pointer; }
+#log { font-size: 0.75rem; margin-top: 1rem; }
+canvas { margin-top: 1rem; image-rendering: pixelated; border: 1px solid #333; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+</head>
+<body>
+<h2>Print QR Code</h2>
+<button id="connect">Connect Printer</button>
+<button id="print" disabled>Print QR</button>
+<div id="log"></div>
+<canvas id="qr"></canvas>
+
+<script>
+const SERVICE_UUID = 'e7810a71-73ae-499d-8c15-faa9aef0c3f2';
+const CHAR_UUID = 'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f';
+const URL = 'https://rmill.github.io/mtg-momir/';
+const PRINTER_WIDTH = 576;
+const CHUNK_SIZE = 400;
+
+let bleChar;
+const log = msg => document.getElementById('log').textContent = msg;
+
+// Generate QR after lib loads
+const qrCanvas = document.getElementById('qr');
+const printCanvas = document.createElement('canvas');
+printCanvas.width = PRINTER_WIDTH;
+printCanvas.height = PRINTER_WIDTH;
+try {
+  const tempCanvas = document.createElement('canvas');
+  QRCode.toCanvas(tempCanvas, URL, { margin: 2, color: { dark: '#000', light: '#fff' } }, (err) => {
+    if (err) { log('QR error: ' + err.message); return; }
+    // Scale up to printer width with no smoothing
+    const pCtx = printCanvas.getContext('2d');
+    pCtx.imageSmoothingEnabled = false;
+    pCtx.fillStyle = '#fff';
+    pCtx.fillRect(0, 0, PRINTER_WIDTH, PRINTER_WIDTH);
+    pCtx.drawImage(tempCanvas, 0, 0, PRINTER_WIDTH, PRINTER_WIDTH);
+    // Show preview
+    qrCanvas.width = PRINTER_WIDTH;
+    qrCanvas.height = PRINTER_WIDTH;
+    const qCtx = qrCanvas.getContext('2d');
+    qCtx.drawImage(printCanvas, 0, 0);
+    log('QR ready. Connect printer to print.');
+  });
+} catch(e) { log('QR lib error: ' + e.message); }
+
+// Connect
+document.getElementById('connect').addEventListener('click', async () => {
+  try {
+    log('Requesting device...');
+    const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [SERVICE_UUID] }] });
+    log('Connecting...');
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    bleChar = await service.getCharacteristic(CHAR_UUID);
+    log('Connected: ' + device.name);
+    document.getElementById('print').disabled = false;
+  } catch (e) { log('Error: ' + e.message); }
+});
+
+// Print
+document.getElementById('print').addEventListener('click', async () => {
+  if (!bleChar) return;
+  log('Printing...');
+  const ctx = printCanvas.getContext('2d');
+  const w = printCanvas.width, h = printCanvas.height;
+  const imgData = ctx.getImageData(0, 0, w, h).data;
+  const bytesPerRow = w / 8;
+  const buf = new Uint8Array(8 + bytesPerRow * h + 6);
+  let o = 0;
+  buf[o++] = 0x1D; buf[o++] = 0x76; buf[o++] = 0x30; buf[o++] = 0x00;
+  buf[o++] = bytesPerRow & 0xFF; buf[o++] = (bytesPerRow >> 8) & 0xFF;
+  buf[o++] = h & 0xFF; buf[o++] = (h >> 8) & 0xFF;
+  for (let y = 0; y < h; y++) {
+    for (let bx = 0; bx < bytesPerRow; bx++) {
+      let byte = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        const idx = (y * w + bx * 8 + bit) * 4;
+        if (imgData[idx] < 128) byte |= (0x80 >> bit);
+      }
+      buf[o++] = byte;
+    }
+  }
+  buf[o++] = 0x1B; buf[o++] = 0x64; buf[o++] = 0x04;
+  buf[o++] = 0x1D; buf[o++] = 0x56; buf[o++] = 0x00;
+
+  for (let i = 0; i < buf.length; i += CHUNK_SIZE) {
+    await bleChar.writeValueWithoutResponse(buf.slice(i, i + CHUNK_SIZE));
+  }
+  log('Done!');
+});
+</script>
+</body>
+</html>

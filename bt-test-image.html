@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BT Image Print Test</title>
+<style>
+body { font-family: monospace; background: #111; color: #0f0; padding: 1rem; }
+button { font-size: 1.2rem; padding: 0.5rem 1rem; margin: 0.5rem; cursor: pointer; }
+#log { white-space: pre-wrap; margin-top: 1rem; font-size: 0.8rem; max-height: 40vh; overflow-y: auto; }
+#preview { max-width: 100%; margin-top: 1rem; image-rendering: pixelated; }
+.error { color: #f44; }
+.success { color: #4f4; }
+</style>
+</head>
+<body>
+<h2>BT Image Print Test</h2>
+<button id="connect">1. Connect</button>
+<button id="print" disabled>2. Print Test Image</button>
+<canvas id="preview" width="576" height="200"></canvas>
+<div id="log"></div>
+
+<script>
+const SERVICE_UUID = 'e7810a71-73ae-499d-8c15-faa9aef0c3f2';
+const CHAR_UUID = 'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f';
+const PRINTER_WIDTH = 576; // 80mm printer at 203dpi
+const CHUNK_SIZE = 100;
+const CHUNK_DELAY = 20; // ms between chunks
+
+let writeChar;
+
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = cls || '';
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Connect to printer
+document.getElementById('connect').addEventListener('click', async () => {
+  try {
+    log('Requesting device...');
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE_UUID] }]
+    });
+    log('Device: ' + device.name, 'success');
+
+    const server = await device.gatt.connect();
+    log('Connected!', 'success');
+
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    writeChar = await service.getCharacteristic(CHAR_UUID);
+    log('Ready to print', 'success');
+    document.getElementById('print').disabled = false;
+  } catch (e) {
+    log('Error: ' + e.message, 'error');
+  }
+});
+
+// Send data in chunks with delay
+async function sendData(data) {
+  for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+    const chunk = data.slice(i, i + CHUNK_SIZE);
+    await writeChar.writeValueWithoutResponse(chunk);
+    if (i + CHUNK_SIZE < data.length) await sleep(CHUNK_DELAY);
+  }
+}
+
+// Convert 1-bit canvas to ESC/POS raster image commands
+function canvasToEscPos(canvas) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  const imgData = ctx.getImageData(0, 0, w, h).data;
+  const bytesPerRow = Math.ceil(w / 8);
+  const commands = [];
+
+  // ESC @ — initialize
+  commands.push(0x1B, 0x40);
+
+  // Print image using GS v 0 (raster bit image)
+  // GS v 0 m xL xH yL yH d1...dk
+  const m = 0; // normal mode
+  const xL = bytesPerRow & 0xFF;
+  const xH = (bytesPerRow >> 8) & 0xFF;
+  const yL = h & 0xFF;
+  const yH = (h >> 8) & 0xFF;
+  commands.push(0x1D, 0x76, 0x30, m, xL, xH, yL, yH);
+
+  // Raster data: 1 = black, 0 = white (inverted from canvas)
+  for (let y = 0; y < h; y++) {
+    for (let byteX = 0; byteX < bytesPerRow; byteX++) {
+      let byte = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        const x = byteX * 8 + bit;
+        if (x < w) {
+          const idx = (y * w + x) * 4;
+          const brightness = imgData[idx]; // R channel (grayscale)
+          if (brightness < 128) byte |= (0x80 >> bit); // dark pixel = 1
+        }
+      }
+      commands.push(byte);
+    }
+  }
+
+  // Feed and cut
+  commands.push(0x1B, 0x64, 0x04); // feed 4 lines
+  commands.push(0x1D, 0x56, 0x00); // full cut
+
+  return new Uint8Array(commands);
+}
+
+// Generate a test image on canvas
+function drawTestImage() {
+  const canvas = document.getElementById('preview');
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, 576, 200);
+
+  ctx.fillStyle = '#000';
+  ctx.font = 'bold 48px monospace';
+  ctx.fillText('Web Bluetooth Print', 20, 60);
+  ctx.font = '24px monospace';
+  ctx.fillText('MTG Momir Machine', 20, 100);
+  ctx.fillText(new Date().toLocaleString(), 20, 140);
+
+  // Draw some test patterns
+  for (let x = 20; x < 556; x += 4) {
+    ctx.fillRect(x, 160, 2, 30);
+  }
+
+  return canvas;
+}
+
+// Print
+document.getElementById('print').addEventListener('click', async () => {
+  if (!writeChar) return;
+  try {
+    const canvas = drawTestImage();
+    log('Converting to ESC/POS raster...');
+    const data = canvasToEscPos(canvas);
+    log(`Image data: ${data.length} bytes (${Math.ceil(data.length / CHUNK_SIZE)} chunks)`);
+
+    const start = Date.now();
+    log('Sending...');
+    await sendData(data);
+    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+
+    log(`Print sent in ${elapsed}s!`, 'success');
+  } catch (e) {
+    log('Print error: ' + e.message, 'error');
+  }
+});
+
+drawTestImage();
+</script>
+</body>
+</html>

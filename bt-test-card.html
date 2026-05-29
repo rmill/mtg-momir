@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BT Card Print Test</title>
+<style>
+body { font-family: monospace; background: #111; color: #0f0; padding: 1rem; }
+button { font-size: 1rem; padding: 0.5rem 1rem; margin: 0.3rem; cursor: pointer; }
+#log { white-space: pre-wrap; margin-top: 1rem; font-size: 0.75rem; max-height: 30vh; overflow-y: auto; }
+#preview { max-width: 100%; margin-top: 1rem; image-rendering: pixelated; border: 1px solid #333; }
+.error { color: #f44; }
+.success { color: #4f4; }
+</style>
+</head>
+<body>
+<h2>BT Card Print Test</h2>
+<button id="connect">Connect</button>
+<button id="print" disabled>Print Card</button>
+<canvas id="preview"></canvas>
+<canvas id="dither-canvas" style="display:none"></canvas>
+<div id="log"></div>
+
+<script>
+const SERVICE_UUID = 'e7810a71-73ae-499d-8c15-faa9aef0c3f2';
+const CHAR_UUID = 'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f';
+const PRINTER_WIDTH = 576;
+const CONTRAST = 1.4;
+const CHUNK_SIZE = 400;
+
+let writeChar;
+
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = cls || '';
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+// Connect
+document.getElementById('connect').addEventListener('click', async () => {
+  try {
+    log('Connecting...');
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE_UUID] }]
+    });
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    writeChar = await service.getCharacteristic(CHAR_UUID);
+    log('Connected: ' + device.name, 'success');
+    document.getElementById('print').disabled = false;
+  } catch (e) {
+    log('Error: ' + e.message, 'error');
+  }
+});
+
+// Floyd-Steinberg dither (same as main app)
+function ditherImage(img) {
+  const canvas = document.getElementById('dither-canvas');
+  const ratio = PRINTER_WIDTH / img.width;
+  const h = Math.round(img.height * ratio);
+  canvas.width = PRINTER_WIDTH;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, PRINTER_WIDTH, h);
+  const imageData = ctx.getImageData(0, 0, PRINTER_WIDTH, h);
+  const pixels = imageData.data;
+  const w = PRINTER_WIDTH;
+  const gray = new Float32Array(w * h);
+  for (let i = 0; i < gray.length; i++) {
+    let v = (0.299*pixels[i*4] + 0.587*pixels[i*4+1] + 0.114*pixels[i*4+2]) / 255;
+    v = (v - 0.5) * CONTRAST + 0.5;
+    gray[i] = Math.max(0, Math.min(1, v)) * 255;
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const old = gray[i];
+      const val = old >= 128 ? 255 : 0;
+      gray[i] = val;
+      const err = old - val;
+      if (x+1 < w) gray[i+1] += err * 7/16;
+      if (y+1 < h) {
+        if (x > 0) gray[(y+1)*w+x-1] += err * 3/16;
+        gray[(y+1)*w+x] += err * 5/16;
+        if (x+1 < w) gray[(y+1)*w+x+1] += err * 1/16;
+      }
+    }
+  }
+  for (let i = 0; i < gray.length; i++) {
+    const v = gray[i] >= 128 ? 255 : 0;
+    pixels[i*4] = pixels[i*4+1] = pixels[i*4+2] = v;
+    pixels[i*4+3] = 255;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+// Canvas to ESC/POS raster
+function canvasToEscPos(canvas) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  const imgData = ctx.getImageData(0, 0, w, h).data;
+  const bytesPerRow = w / 8;
+
+  const headerLen = 2 + 8; // init + GS v 0 header
+  const dataLen = bytesPerRow * h;
+  const footerLen = 6; // feed + cut
+  const buf = new Uint8Array(headerLen + dataLen + footerLen);
+  let offset = 0;
+
+  // ESC @
+  buf[offset++] = 0x1B; buf[offset++] = 0x40;
+  // GS v 0
+  buf[offset++] = 0x1D; buf[offset++] = 0x76; buf[offset++] = 0x30; buf[offset++] = 0x00;
+  buf[offset++] = bytesPerRow & 0xFF; buf[offset++] = (bytesPerRow >> 8) & 0xFF;
+  buf[offset++] = h & 0xFF; buf[offset++] = (h >> 8) & 0xFF;
+
+  for (let y = 0; y < h; y++) {
+    for (let byteX = 0; byteX < bytesPerRow; byteX++) {
+      let byte = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        const x = byteX * 8 + bit;
+        const idx = (y * w + x) * 4;
+        if (imgData[idx] < 128) byte |= (0x80 >> bit);
+      }
+      buf[offset++] = byte;
+    }
+  }
+
+  // Feed + cut
+  buf[offset++] = 0x1B; buf[offset++] = 0x64; buf[offset++] = 0x04;
+  buf[offset++] = 0x1D; buf[offset++] = 0x56; buf[offset++] = 0x00;
+
+  return buf;
+}
+
+// Send chunked
+async function sendData(data) {
+  for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+    const chunk = data.slice(i, i + CHUNK_SIZE);
+    await writeChar.writeValueWithoutResponse(chunk);
+  }
+}
+
+// Load image
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+// Print
+document.getElementById('print').addEventListener('click', async () => {
+  if (!writeChar) return;
+  try {
+    // Load a random card image
+    const cardUrl = 'https://cards.scryfall.io/border_crop/front/a/4/a471b306-4941-4e46-a0cb-d92895c16f8a.jpg';
+    log('Loading card image...');
+    const img = await loadImage(cardUrl);
+    log(`Image loaded: ${img.width}x${img.height}`);
+
+    log('Dithering...');
+    const dithered = ditherImage(img);
+    log(`Dithered: ${dithered.width}x${dithered.height}`);
+
+    // Show preview
+    const preview = document.getElementById('preview');
+    preview.width = dithered.width;
+    preview.height = dithered.height;
+    preview.getContext('2d').drawImage(dithered, 0, 0);
+
+    log('Converting to ESC/POS...');
+    const data = canvasToEscPos(dithered);
+    log(`Payload: ${(data.length / 1024).toFixed(1)} KB`);
+
+    log('Sending to printer...');
+    const start = Date.now();
+    await sendData(data);
+    const elapsed = ((Date.now() - start) / 1000).toFixed(2);
+    log(`Done! Sent in ${elapsed}s`, 'success');
+  } catch (e) {
+    log('Error: ' + e.message, 'error');
+  }
+});
+</script>
+</body>
+</html>

@@ -368,7 +368,7 @@ body {
     <label>Debug</label>
     <span id="debug-btn" class="settings-btn">OFF</span>
   </div>
-  <div class="settings-version">v1.0.5</div>
+  <div class="settings-version">v1.0.6</div>
 </div>
 
 <canvas id="dither-canvas" style="display:none"></canvas>
@@ -1531,7 +1531,7 @@ if (mode === 'host') startHostPolling();
 let gyroTiltX = 0, gyroTiltY = 0;
 function handleOrientation(e) {
   gyroTiltX = Math.max(-30, Math.min(30, (e.gamma || 0) * 0.8));
-  gyroTiltY = Math.max(-30, Math.min(30, ((e.beta || 0) - 45) * -0.8));
+  gyroTiltY = Math.max(-10, Math.min(10, ((e.beta || 0) - 45) * -0.8));
   const wrapper = document.getElementById('card-wrapper');
   if (wrapper && wrapper.classList.contains('gyro-tilt')) {
     wrapper.style.transform = `rotateY(${gyroTiltX}deg) rotateX(${gyroTiltY}deg)`;

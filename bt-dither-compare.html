@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dither Comparison</title>
+<style>
+body { font-family: monospace; background: #111; color: #eee; padding: 1rem; }
+button { font-size: 1rem; padding: 0.5rem 1rem; margin: 0.5rem; cursor: pointer; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-top: 1rem; }
+.card { background: #1a1a1a; padding: 0.5rem; border-radius: 4px; }
+.card canvas { width: 100%; image-rendering: pixelated; }
+.card .label { font-size: 0.7rem; color: #aaa; margin-top: 0.3rem; }
+#source { max-width: 200px; margin-top: 0.5rem; }
+#log { font-size: 0.75rem; color: #0f0; margin-top: 0.5rem; }
+</style>
+</head>
+<body>
+<h2>Dither Comparison</h2>
+<button id="connect">Connect Printer</button>
+<button id="go">Random Card</button>
+<span id="log"></span>
+<img id="source">
+<div class="grid" id="grid"></div>
+
+<script>
+const SERVICE_UUID = 'e7810a71-73ae-499d-8c15-faa9aef0c3f2';
+const CHAR_UUID = 'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f';
+const W = 576;
+let bleChar;
+
+// Sample card URLs from different color identities
+const cards = [
+  'https://cards.scryfall.io/border_crop/front/a/4/a471b306-4941-4e46-a0cb-d92895c16f8a.jpg',
+  'https://cards.scryfall.io/border_crop/front/d/0/d0787e1f-0b75-44ab-a8fd-90358906a787.jpg',
+  'https://cards.scryfall.io/border_crop/front/3/6/36ed9f9d-99a7-49f4-b0ad-d71355809d32.jpg',
+  'https://cards.scryfall.io/border_crop/front/6/7/67ff9ba3-cd2b-4970-b4da-22104b10a4a4.jpg',
+  'https://cards.scryfall.io/border_crop/front/c/8/c83ed3e0-82d0-4410-a6ca-b0f923eadf83.jpg',
+  'https://cards.scryfall.io/border_crop/front/7/f/7f36775e-9e48-49cc-a771-d58481712edc.jpg',
+  'https://cards.scryfall.io/border_crop/front/d/6/d67be074-cdd4-41d9-ac89-0a0456c4e4b2.jpg',
+];
+
+const configs = [
+  { name: 'Floyd-Steinberg c1.0', method: 'floyd', contrast: 1.0, brightness: 0 },
+  { name: 'Floyd-Steinberg c1.2', method: 'floyd', contrast: 1.2, brightness: 0 },
+  { name: 'Floyd-Steinberg c1.4', method: 'floyd', contrast: 1.4, brightness: 0 },
+  { name: 'Floyd-Steinberg c1.6', method: 'floyd', contrast: 1.6, brightness: 0 },
+  { name: 'Floyd-Steinberg c1.4 b+10', method: 'floyd', contrast: 1.4, brightness: 10 },
+  { name: 'Floyd-Steinberg c1.4 b-10', method: 'floyd', contrast: 1.4, brightness: -10 },
+  { name: 'Atkinson c1.4', method: 'atkinson', contrast: 1.4, brightness: 0 },
+  { name: 'Atkinson c1.2', method: 'atkinson', contrast: 1.2, brightness: 0 },
+  { name: 'Threshold 128', method: 'threshold', contrast: 1.0, brightness: 0, threshold: 128 },
+  { name: 'Threshold 100', method: 'threshold', contrast: 1.2, brightness: 0, threshold: 100 },
+  { name: 'Bayer 4x4 c1.4', method: 'bayer', contrast: 1.4, brightness: 0, size: 4 },
+  { name: 'Bayer 8x8 c1.4', method: 'bayer', contrast: 1.4, brightness: 0, size: 8 },
+];
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function toGray(img, contrast, brightness) {
+  const ratio = W / img.width;
+  const h = Math.round(img.height * ratio);
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, W, h);
+  const imageData = ctx.getImageData(0, 0, W, h);
+  const pixels = imageData.data;
+  const gray = new Float32Array(W * h);
+  for (let i = 0; i < gray.length; i++) {
+    let v = (0.299*pixels[i*4] + 0.587*pixels[i*4+1] + 0.114*pixels[i*4+2]);
+    v += brightness;
+    v = (v - 128) * contrast + 128;
+    gray[i] = Math.max(0, Math.min(255, v));
+  }
+  return { gray, w: W, h, canvas, ctx, imageData };
+}
+
+function ditherFloyd(img, contrast, brightness) {
+  const { gray, w, h, canvas, ctx, imageData } = toGray(img, contrast, brightness);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const old = gray[i];
+      const val = old >= 128 ? 255 : 0;
+      gray[i] = val;
+      const err = old - val;
+      if (x+1 < w) gray[i+1] += err * 7/16;
+      if (y+1 < h) {
+        if (x > 0) gray[(y+1)*w+x-1] += err * 3/16;
+        gray[(y+1)*w+x] += err * 5/16;
+        if (x+1 < w) gray[(y+1)*w+x+1] += err * 1/16;
+      }
+    }
+  }
+  const pixels = imageData.data;
+  for (let i = 0; i < gray.length; i++) {
+    const v = gray[i] >= 128 ? 255 : 0;
+    pixels[i*4] = pixels[i*4+1] = pixels[i*4+2] = v; pixels[i*4+3] = 255;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+function ditherAtkinson(img, contrast, brightness) {
+  const { gray, w, h, canvas, ctx, imageData } = toGray(img, contrast, brightness);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const old = gray[i];
+      const val = old >= 128 ? 255 : 0;
+      gray[i] = val;
+      const err = (old - val) / 8;
+      if (x+1 < w) gray[i+1] += err;
+      if (x+2 < w) gray[i+2] += err;
+      if (y+1 < h) {
+        if (x > 0) gray[(y+1)*w+x-1] += err;
+        gray[(y+1)*w+x] += err;
+        if (x+1 < w) gray[(y+1)*w+x+1] += err;
+      }
+      if (y+2 < h) gray[(y+2)*w+x] += err;
+    }
+  }
+  const pixels = imageData.data;
+  for (let i = 0; i < gray.length; i++) {
+    const v = gray[i] >= 128 ? 255 : 0;
+    pixels[i*4] = pixels[i*4+1] = pixels[i*4+2] = v; pixels[i*4+3] = 255;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+function ditherThreshold(img, contrast, brightness, threshold) {
+  const { gray, w, h, canvas, ctx, imageData } = toGray(img, contrast, brightness);
+  const pixels = imageData.data;
+  for (let i = 0; i < gray.length; i++) {
+    const v = gray[i] >= threshold ? 255 : 0;
+    pixels[i*4] = pixels[i*4+1] = pixels[i*4+2] = v; pixels[i*4+3] = 255;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+function ditherBayer(img, contrast, brightness, size) {
+  const bayer4 = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+  const bayer8 = [];
+  for (let y = 0; y < 8; y++) { bayer8[y] = []; for (let x = 0; x < 8; x++) {
+    const i = (y & 3), j = (x & 3);
+    bayer8[y][x] = bayer4[i][j] * 4 + bayer4[y >> 1 & 1 | (x >> 1 & 1) << 1][(y >> 2) * 2 + (x >> 2)];
+  }}
+  // Simpler: just use 4x4 or generate proper 8x8
+  const matrix = size === 4 ? bayer4 : generateBayer8();
+  const n = size;
+  const { gray, w, h, canvas, ctx, imageData } = toGray(img, contrast, brightness);
+  const pixels = imageData.data;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const threshold = (matrix[y % n][x % n] / (n * n)) * 255;
+      const v = gray[y * w + x] > threshold ? 255 : 0;
+      const i = (y * w + x) * 4;
+      pixels[i] = pixels[i+1] = pixels[i+2] = v; pixels[i+3] = 255;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+function generateBayer8() {
+  const m = [[0,32,8,40,2,34,10,42],[48,16,56,24,50,18,58,26],[12,44,4,36,14,46,6,38],[60,28,52,20,62,30,54,22],[3,35,11,43,1,33,9,41],[51,19,59,27,49,17,57,25],[15,47,7,39,13,45,5,37],[63,31,55,23,61,29,53,21]];
+  return m;
+}
+
+function dither(img, cfg) {
+  switch (cfg.method) {
+    case 'floyd': return ditherFloyd(img, cfg.contrast, cfg.brightness);
+    case 'atkinson': return ditherAtkinson(img, cfg.contrast, cfg.brightness);
+    case 'threshold': return ditherThreshold(img, cfg.contrast, cfg.brightness, cfg.threshold);
+    case 'bayer': return ditherBayer(img, cfg.contrast, cfg.brightness, cfg.size);
+  }
+}
+
+function canvasToEscPos(canvas) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const imgData = ctx.getImageData(0, 0, w, h).data;
+  const bytesPerRow = w / 8;
+  const buf = new Uint8Array(8 + bytesPerRow * h + 6);
+  let o = 0;
+  buf[o++] = 0x1D; buf[o++] = 0x76; buf[o++] = 0x30; buf[o++] = 0x00;
+  buf[o++] = bytesPerRow & 0xFF; buf[o++] = (bytesPerRow >> 8) & 0xFF;
+  buf[o++] = h & 0xFF; buf[o++] = (h >> 8) & 0xFF;
+  for (let y = 0; y < h; y++) {
+    for (let bx = 0; bx < bytesPerRow; bx++) {
+      let byte = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        const idx = (y * w + bx * 8 + bit) * 4;
+        if (imgData[idx] < 128) byte |= (0x80 >> bit);
+      }
+      buf[o++] = byte;
+    }
+  }
+  buf[o++] = 0x1B; buf[o++] = 0x64; buf[o++] = 0x06;
+  buf[o++] = 0x1D; buf[o++] = 0x56; buf[o++] = 0x00;
+  return buf;
+}
+
+let canvases = [];
+
+document.getElementById('go').addEventListener('click', async () => {
+  const url = cards[Math.floor(Math.random() * cards.length)];
+  document.getElementById('log').textContent = 'Loading...';
+  const img = await loadImage(url);
+  document.getElementById('source').src = url;
+  document.getElementById('log').textContent = `${img.width}x${img.height}`;
+
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  canvases = [];
+
+  for (const cfg of configs) {
+    const canvas = dither(img, cfg);
+    canvases.push(canvas);
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.appendChild(canvas);
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = cfg.name;
+    div.appendChild(label);
+    const btn = document.createElement('button');
+    btn.textContent = 'Print';
+    btn.style.fontSize = '0.7rem';
+    btn.addEventListener('click', () => printCanvas(canvas));
+    div.appendChild(btn);
+    grid.appendChild(div);
+  }
+  document.getElementById('print').disabled = !bleChar;
+});
+
+// BLE connect
+document.getElementById('connect').addEventListener('click', async () => {
+  try {
+    const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [SERVICE_UUID] }] });
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    bleChar = await service.getCharacteristic(CHAR_UUID);
+    document.getElementById('log').textContent = 'Connected: ' + device.name;
+  } catch (e) {
+    document.getElementById('log').textContent = 'BLE: ' + e.message;
+  }
+});
+
+async function printCanvas(canvas) {
+  if (!bleChar) { document.getElementById('log').textContent = 'Connect printer first'; return; }
+  document.getElementById('log').textContent = 'Printing...';
+  const data = canvasToEscPos(canvas);
+  for (let j = 0; j < data.length; j += 400) {
+    await bleChar.writeValueWithoutResponse(data.slice(j, j + 400));
+  }
+  document.getElementById('log').textContent = 'Done!';
+}
+</script>
+</body>
+</html>

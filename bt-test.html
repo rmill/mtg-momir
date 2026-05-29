@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BT Printer Test</title>
+<style>
+body { font-family: monospace; background: #111; color: #0f0; padding: 1rem; }
+button { font-size: 1.2rem; padding: 0.5rem 1rem; margin: 0.5rem; cursor: pointer; }
+#log { white-space: pre-wrap; margin-top: 1rem; font-size: 0.8rem; max-height: 60vh; overflow-y: auto; }
+.error { color: #f44; }
+.success { color: #4f4; }
+</style>
+</head>
+<body>
+<h2>Web Bluetooth Printer Test</h2>
+<button id="scan">1. Scan for Printer</button>
+<button id="print" disabled>2. Print Test</button>
+<div id="log"></div>
+
+<script>
+let device, server, writeChar;
+
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = cls || '';
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+document.getElementById('scan').addEventListener('click', async () => {
+  try {
+    log('Requesting Bluetooth device...');
+    // Try to find any printer - common thermal printer service UUIDs
+    device = await navigator.bluetooth.requestDevice({
+      // Accept all devices and let user pick
+      acceptAllDevices: true,
+      optionalServices: [
+        '000018f0-0000-1000-8000-00805f9b34fb', // common thermal printer service
+        '49535343-fe7d-4ae5-8fa9-9fafd205e455', // another common one (Microchip)
+        '0000ff00-0000-1000-8000-00805f9b34fb', // generic
+        'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // some Chinese printers
+      ]
+    });
+    log('Device: ' + device.name, 'success');
+
+    log('Connecting to GATT server...');
+    server = await device.gatt.connect();
+    log('Connected!', 'success');
+
+    log('Discovering services...');
+    const services = await server.getPrimaryServices();
+    for (const svc of services) {
+      log('  Service: ' + svc.uuid);
+      const chars = await svc.getCharacteristics();
+      for (const ch of chars) {
+        const props = [];
+        if (ch.properties.write) props.push('write');
+        if (ch.properties.writeWithoutResponse) props.push('writeNoResp');
+        if (ch.properties.read) props.push('read');
+        if (ch.properties.notify) props.push('notify');
+        log('    Char: ' + ch.uuid + ' [' + props.join(', ') + ']');
+        // Pick the first writable characteristic
+        if (!writeChar && (ch.properties.write || ch.properties.writeWithoutResponse)) {
+          writeChar = ch;
+        }
+      }
+    }
+
+    if (writeChar) {
+      log('Write characteristic found: ' + writeChar.uuid, 'success');
+      document.getElementById('print').disabled = false;
+    } else {
+      log('No writable characteristic found!', 'error');
+    }
+  } catch (e) {
+    log('Error: ' + e.message, 'error');
+  }
+});
+
+document.getElementById('print').addEventListener('click', async () => {
+  if (!writeChar) return;
+  try {
+    log('Sending test print...');
+
+    // ESC/POS: Initialize + "Hello from Web Bluetooth!" + feed + cut
+    const encoder = new TextEncoder();
+    const init = new Uint8Array([0x1B, 0x40]); // ESC @ (initialize)
+    const text = encoder.encode('Hello from Web Bluetooth!\n\n');
+    const feed = new Uint8Array([0x1B, 0x64, 0x04]); // feed 4 lines
+    const cut = new Uint8Array([0x1D, 0x56, 0x00]); // GS V 0 (full cut)
+
+    const data = new Uint8Array([...init, ...text, ...feed, ...cut]);
+
+    // BLE has MTU limits, send in chunks
+    const chunkSize = 100;
+    for (let i = 0; i < data.length; i += chunkSize) {
+      const chunk = data.slice(i, i + chunkSize);
+      if (writeChar.properties.writeWithoutResponse) {
+        await writeChar.writeValueWithoutResponse(chunk);
+      } else {
+        await writeChar.writeValueWithResponse(chunk);
+      }
+    }
+
+    log('Print sent!', 'success');
+  } catch (e) {
+    log('Print error: ' + e.message, 'error');
+  }
+});
+</script>
+</body>
+</html>
