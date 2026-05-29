@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>The Momir Machine</title>
+<title>Momir's Magic</title>
 <script>
 (function(){
-  var colors = [0x4fc3a0, 0xc34f7a, 0x4f8fc3, 0xc3a04f, 0xa04fc3];
+  var colors = [0x4fc3a0, 0xc34f7a, 0x4f8fc3, 0xc3a04f, 0xa04fc3, 0xff6b35, 0x35d0ff, 0xff3560, 0x60ff35, 0xffd700, 0xff35ff, 0x35ffb0, 0xffffff, 0x888888];
   var i = parseInt(localStorage.getItem('momir-color') || '0');
   var hex = colors[i] || colors[0];
   var r = (hex>>16)&0xff, g = (hex>>8)&0xff, b = hex&0xff;
@@ -337,8 +337,13 @@ body {
 <div id="settings-cog">⚙</div>
 <div id="settings-overlay"></div>
 <div id="settings-menu">
-  <div style="font-size:0.9rem;color:var(--theme);font-weight:bold;letter-spacing:0.05em;">MAGIC<br><span style="font-size:1.1rem;">the MOMIR</span></div>
+  <div style="font-size:0.9rem;color:var(--theme);font-weight:bold;letter-spacing:0.05em;">MOMIR'S<br><span style="font-size:1.1rem;">MAGIC</span></div>
   <a href="https://magic.wizards.com/en/formats/momir-basic" target="_blank" style="font-size:0.65rem;color:var(--theme-dim);text-decoration:none;">How to Play ↗</a>
+  <div style="font-size:0.6rem;color:#888;line-height:1.4;">
+    Swipe to change CMC<br>
+    Hold to cast<br>
+    Double-tap to change color
+  </div>
   <div class="settings-item">
     <label>Mode</label>
     <select id="mode-select">
@@ -355,7 +360,7 @@ body {
     <label>Debug</label>
     <span id="debug-btn" class="settings-btn">OFF</span>
   </div>
-  <div class="settings-version">v1.0.1</div>
+  <div class="settings-version">v1.0.2</div>
 </div>
 
 <canvas id="dither-canvas" style="display:none"></canvas>
@@ -605,7 +610,7 @@ const cmcCtx = cmcCanvas.getContext('2d');
 const cmcTexture = new THREE.CanvasTexture(cmcCanvas);
 cmcTexture.needsUpdate = true;
 
-const colors = [0x4fc3a0, 0xc34f7a, 0x4f8fc3, 0xc3a04f, 0xa04fc3];
+const colors = [0x4fc3a0, 0xc34f7a, 0x4f8fc3, 0xc3a04f, 0xa04fc3, 0xff6b35, 0x35d0ff, 0xff3560, 0x60ff35, 0xffd700, 0xff35ff, 0x35ffb0, 0xffffff, 0x888888];
 let colorIndex = parseInt(localStorage.getItem('momir-color') || '0');
 
 const spriteMat = new THREE.MeshBasicMaterial({ map: cmcTexture, transparent: true, depthTest: false });
@@ -983,11 +988,11 @@ async function cast() {
     }
 
     await sleep(1400);
-    // Twinkle where the card vanished
+    // Twinkle where the card is
     const twinkle = document.getElementById('twinkle');
     const rect = wrapper.getBoundingClientRect();
     twinkle.style.left = (rect.left + rect.width / 2) + 'px';
-    twinkle.style.top = (rect.top + rect.height / 2) + 'px';
+    twinkle.style.top = Math.max(20, rect.top + rect.height / 2) + 'px';
     twinkle.classList.add('visible');
 
     // Host: print via BLE at twinkle
@@ -1149,7 +1154,7 @@ function updateLightning() {
 // --- Animation Loop ---
 let burstPhase = 0;
 let lastFrameTime = 0;
-const frameDuration = 1000 / 30;
+const frameDuration = 1000 / 60;
 function animate(time) {
   requestAnimationFrame(animate);
   if (time - lastFrameTime < frameDuration) return;
