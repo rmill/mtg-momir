@@ -373,7 +373,7 @@ body {
     <label>Debug</label>
     <span id="debug-btn" class="settings-btn">OFF</span>
   </div>
-  <div class="settings-version">v1.1.1</div>
+  <div class="settings-version">v1.1.2</div>
 </div>
 
 <canvas id="dither-canvas" style="display:none"></canvas>
@@ -812,9 +812,9 @@ canvas.addEventListener('pointermove', (e) => {
 
 canvas.addEventListener('pointerup', () => {
   pointerDown = false;
+  if (castHoldStart) return; // past point of no return
   if (hasMoved) {
     cancelCasting();
-    // Let momentum carry — snap target will be set once velocity dies down
     targetRotationY = currentRotationY;
   } else {
     // Released before cast fired — ease back
