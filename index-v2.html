@@ -337,6 +337,8 @@ body {
 <div id="settings-cog">⚙</div>
 <div id="settings-overlay"></div>
 <div id="settings-menu">
+  <div style="font-size:0.9rem;color:var(--theme);font-weight:bold;letter-spacing:0.05em;">MAGIC<br><span style="font-size:1.1rem;">the MOMIR</span></div>
+  <a href="https://magic.wizards.com/en/formats/momir-basic" target="_blank" style="font-size:0.65rem;color:var(--theme-dim);text-decoration:none;">How to Play ↗</a>
   <div class="settings-item">
     <label>Mode</label>
     <select id="mode-select">
@@ -353,7 +355,7 @@ body {
     <label>Debug</label>
     <span id="debug-btn" class="settings-btn">OFF</span>
   </div>
-  <div class="settings-version">v1.0.0</div>
+  <div class="settings-version">v1.0.1</div>
 </div>
 
 <canvas id="dither-canvas" style="display:none"></canvas>
@@ -1340,9 +1342,8 @@ function canvasToEscPos(canvas) {
   const w = canvas.width, h = canvas.height;
   const imgData = ctx.getImageData(0, 0, w, h).data;
   const bytesPerRow = w / 8;
-  const buf = new Uint8Array(10 + bytesPerRow * h + 6);
+  const buf = new Uint8Array(8 + bytesPerRow * h + 6);
   let o = 0;
-  buf[o++] = 0x1B; buf[o++] = 0x40; // init
   buf[o++] = 0x1D; buf[o++] = 0x76; buf[o++] = 0x30; buf[o++] = 0x00; // GS v 0
   buf[o++] = bytesPerRow & 0xFF; buf[o++] = (bytesPerRow >> 8) & 0xFF;
   buf[o++] = h & 0xFF; buf[o++] = (h >> 8) & 0xFF;
