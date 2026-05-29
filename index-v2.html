@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>The Momir Machine</title>
+<script>
+(function(){
+  var colors = [0x4fc3a0, 0xc34f7a, 0x4f8fc3, 0xc3a04f, 0xa04fc3];
+  var i = parseInt(localStorage.getItem('momir-color') || '0');
+  var hex = colors[i] || colors[0];
+  var r = (hex>>16)&0xff, g = (hex>>8)&0xff, b = hex&0xff;
+  document.documentElement.style.setProperty('--theme', 'rgb('+r+','+g+','+b+')');
+  document.documentElement.style.setProperty('--theme-dim', 'rgba('+r+','+g+','+b+',0.85)');
+  document.documentElement.style.setProperty('--theme-faint', 'rgba('+r+','+g+','+b+',0.4)');
+})();
+</script>
 <style>
 @font-face {
   font-family: 'Uncial Antiqua';
@@ -47,7 +58,7 @@ body {
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  background: radial-gradient(circle at 50% 50%, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 20%, transparent 40%);
+  background: radial-gradient(circle at 50% 50%, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 20%, transparent 40%), radial-gradient(circle at 50% 50%, transparent 60%, rgba(79,195,160,0.15) 100%);
 }
 
 #screen-dim {
@@ -57,6 +68,15 @@ body {
   opacity: 0;
   z-index: 5;
   pointer-events: none;
+}
+#white-flash {
+  position: fixed;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  z-index: 15;
+  pointer-events: none;
+  transition: opacity 0.15s;
 }
 
 #nebula-canvas {
@@ -150,7 +170,7 @@ body {
   box-shadow: 0 0 60px #4fc3a044;
   opacity: 0;
   transform: scale(0.7);
-  transition: transform 0.6s ease-out, opacity 0.3s;
+  transition: transform 0.25s ease-out, opacity 0.15s;
 }
 #card-color.visible, #card-dithered.visible {
   opacity: 1;
@@ -222,7 +242,7 @@ body {
   top: 1rem;
   right: 1rem;
   font-size: 1.2rem;
-  color: #4fc3a0aa;
+  color: var(--theme-dim);
   cursor: pointer;
   z-index: 40;
 }
@@ -243,7 +263,7 @@ body {
   width: 200px;
   height: 100%;
   background: #111;
-  border-left: 1px solid #4fc3a033;
+  border-left: 1px solid var(--theme-faint);
   padding: 3rem 1rem 1rem;
   z-index: 30;
   transition: right 0.3s;
@@ -257,18 +277,18 @@ body {
   justify-content: space-between;
   align-items: center;
   font-size: 0.75rem;
-  color: #4fc3a0cc;
+  color: var(--theme-dim);
 }
 .settings-btn {
   cursor: pointer;
   padding: 0.2rem 0.5rem;
-  border: 1px solid #4fc3a044;
+  border: 1px solid var(--theme-faint);
   border-radius: 3px;
 }
 #mode-select {
   background: #222;
-  color: #4fc3a0cc;
-  border: 1px solid #4fc3a044;
+  color: var(--theme-dim);
+  border: 1px solid var(--theme-faint);
   border-radius: 3px;
   padding: 0.2rem 0.4rem;
   font-size: 0.7rem;
@@ -276,7 +296,7 @@ body {
 .settings-version {
   margin-top: auto;
   font-size: 0.6rem;
-  color: #4fc3a066;
+  color: var(--theme-faint);
 }
 #debug-console {
   position: fixed;
@@ -300,6 +320,7 @@ body {
 <div id="orb-distortion"></div>
 <div id="ring-dim"></div>
 <div id="screen-dim"></div>
+<div id="white-flash"></div>
 <canvas id="orb-canvas"></canvas>
 <canvas id="lightning-canvas"></canvas>
 
@@ -324,11 +345,15 @@ body {
       <option value="host">HOST</option>
     </select>
   </div>
+  <div class="settings-item" id="printer-item" style="display:none">
+    <label>Printer</label>
+    <span id="ble-btn" class="settings-btn">CONNECT</span>
+  </div>
   <div class="settings-item">
     <label>Debug</label>
     <span id="debug-btn" class="settings-btn">OFF</span>
   </div>
-  <div class="settings-version">v0.5.0</div>
+  <div class="settings-version">v1.0.0</div>
 </div>
 
 <canvas id="dither-canvas" style="display:none"></canvas>
@@ -476,7 +501,7 @@ const CMC_MAX = 16;
 let cardData = null;
 let cmc = parseInt(localStorage.getItem('momir-cmc') || '5');
 let mode = localStorage.getItem('momir-mode') || 'player';
-if (mode === 'rawbt') mode = 'host'; // migrate old setting
+
 let casting = false;
 
 
@@ -685,6 +710,7 @@ let targetRotationY = 0;
 let currentRotationY = 0;
 let castTimer = null;
 let castStart = 0;
+let castHoldStart = 0;
 let chargeProgress = 0;
 let orbVisible = true;
 let orbScale = 1;
@@ -704,11 +730,15 @@ function setThemeColor(hex) {
   pointLight.color.setHex(hex);
   glowMat.color.setHex(hex);
   ring.material.color.setHex(hex);
-  document.getElementById('settings-cog').style.color = '#' + hex.toString(16).padStart(6, '0') + 'aa';
+  const r = (hex >> 16) & 0xff, g = (hex >> 8) & 0xff, b = hex & 0xff;
+  document.documentElement.style.setProperty('--theme', `rgb(${r},${g},${b})`);
+  document.documentElement.style.setProperty('--theme-dim', `rgba(${r},${g},${b},0.85)`);
+  document.documentElement.style.setProperty('--theme-faint', `rgba(${r},${g},${b},0.4)`);
+  document.getElementById('ring-dim').style.background = `radial-gradient(circle at 50% 50%, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 20%, transparent 40%), radial-gradient(circle at 50% 50%, transparent 60%, rgba(${r},${g},${b},0.15) 100%)`;
   drawCmcTexture(cmc);
   drawBackCmcTexture(Math.min(CMC_MAX, cmc + 1));
 }
-if (colorIndex > 0) setThemeColor(colors[colorIndex]);
+setThemeColor(colors[colorIndex]);
 
 // --- Pointer Events ---
 canvas.addEventListener('pointerdown', (e) => {
@@ -818,6 +848,7 @@ function cancelCasting() {
   if (castStart > 0) console.log('[cast] cancelled, progress=' + chargeProgress.toFixed(2));
   chargeProgress = 0;
   castStart = 0;
+  castHoldStart = 0;
   material.emissiveIntensity = 0.15;
   orbScale = 1;
 }
@@ -848,11 +879,15 @@ function updateCasting() {
   backMat.opacity = Math.max(0, 1 - chargeProgress * 2.0);
   // Rumble — increases with charge
   if (chargeProgress > 0.1) {
-    const intensity = chargeProgress * chargeProgress * 0.15;
+    const intensity = chargeProgress * chargeProgress * 0.4;
     sphere.position.x = (Math.random() - 0.5) * intensity;
     sphere.position.y = (Math.random() - 0.5) * intensity;
   }
-  if (chargeProgress >= 1) {
+  if (chargeProgress >= 1 && !castHoldStart) {
+    castHoldStart = Date.now();
+  }
+  if (castHoldStart && Date.now() - castHoldStart >= 500) {
+    castHoldStart = 0;
     cancelCasting();
     cast();
   }
@@ -880,6 +915,10 @@ async function cast() {
 
   // Burst: scale up and fade out
   orbVisible = false;
+  const flash = document.getElementById('white-flash');
+  flash.style.transition = 'none';
+  flash.style.opacity = '1';
+  requestAnimationFrame(() => { flash.style.transition = 'opacity 0.2s'; flash.style.opacity = '0'; });
   setStatus('summoning ' + card.name + '...');
 
   try {
@@ -921,18 +960,6 @@ async function cast() {
       if (t < 1) shakeFrame = requestAnimationFrame(rampShake);
     })();
 
-    if (mode === 'rawbt' || mode === 'host') {
-      console.log('[print] sending to rawbt');
-      setStatus('printing...');
-      try { await printRawBT(ditheredUrl); }
-      catch (e) { console.error('[print] rawbt failed:', e.message); }
-    } else if (mode === 'player') {
-      console.log('[print] sending to queue');
-      setStatus('sending to printer...');
-      try { await sendToQueue(ditheredUrl); setStatus('sent!'); }
-      catch (e) { console.error('[print] queue failed:', e.message); }
-    }
-
     await sleep(1500);
     cancelAnimationFrame(shakeFrame);
     wrapper.classList.remove('shaking');
@@ -945,6 +972,14 @@ async function cast() {
     container.style.setProperty('--arc-y', randY + 'vh');
     wrapper.classList.add('flyaway');
     container.classList.add('flyaway');
+
+    // Player: send to queue at flyaway
+    if (mode === 'player') {
+      console.log('[print] sending to queue');
+      try { await sendToQueue(ditheredUrl); }
+      catch (e) { console.error('[print] queue failed:', e.message); }
+    }
+
     await sleep(1400);
     // Twinkle where the card vanished
     const twinkle = document.getElementById('twinkle');
@@ -952,6 +987,14 @@ async function cast() {
     twinkle.style.left = (rect.left + rect.width / 2) + 'px';
     twinkle.style.top = (rect.top + rect.height / 2) + 'px';
     twinkle.classList.add('visible');
+
+    // Host: print via BLE at twinkle
+    if (mode === 'host' && bleChar) {
+      console.log('[print] sending via BLE');
+      try { await blePrint(document.getElementById('dither-canvas')); }
+      catch (e) { console.error('[print] BLE failed:', e.message); }
+    }
+
     await sleep(500);
     twinkle.classList.remove('visible');
 
@@ -1202,7 +1245,7 @@ function animate(time) {
   particleGeo.attributes.position.needsUpdate = true;
 
   material.uniforms.uTime.value = Date.now() * 0.001;
-  material.uniforms.uWhiteness.value = lightningIntensity;
+  material.uniforms.uWhiteness.value = Math.min(lightningIntensity, 0.85);
   updateLightning();
   renderer.render(scene, camera);
 }
@@ -1273,26 +1316,60 @@ function ditherImage(img) {
   return canvas.toDataURL('image/png');
 }
 
-function printRawBT(dataUrl) {
-  console.log('[rawbt] connecting to ws://localhost:40213...');
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => { socket.close(); reject(new Error('RawBT timeout')); }, 10000);
-    const socket = new WebSocket('ws://localhost:40213/');
-    socket.onerror = () => { clearTimeout(timeout); console.error('[rawbt] connection failed'); reject(new Error('RawBT not connected')); };
-    socket.onopen = () => {
-      console.log('[rawbt] connected, sending image...');
-      socket.send(JSON.stringify({
-        commands: [{ command: 'image', base64: dataUrl.split(',')[1], attributesImage: {} }]
-      }));
-    };
-    socket.onmessage = (event) => {
-      clearTimeout(timeout);
-      const resp = JSON.parse(event.data);
-      console.log('[rawbt] response:', resp.responseType);
-      if (resp.responseType === 'success') { socket.close(); resolve(); }
-      else if (resp.responseType === 'error') { socket.close(); reject(new Error(resp.errorMessage)); }
-    };
+
+// --- BLE Printer ---
+const BLE_SERVICE = 'e7810a71-73ae-499d-8c15-faa9aef0c3f2';
+const BLE_CHAR = 'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f';
+const BLE_CHUNK = 400;
+let bleChar = null;
+
+async function bleConnect() {
+  const device = await navigator.bluetooth.requestDevice({
+    filters: [{ services: [BLE_SERVICE] }]
   });
+  console.log('[ble] device:', device.name);
+  const server = await device.gatt.connect();
+  const service = await server.getPrimaryService(BLE_SERVICE);
+  bleChar = await service.getCharacteristic(BLE_CHAR);
+  console.log('[ble] connected');
+  document.getElementById('ble-btn').textContent = 'LINKED';
+}
+
+function canvasToEscPos(canvas) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const imgData = ctx.getImageData(0, 0, w, h).data;
+  const bytesPerRow = w / 8;
+  const buf = new Uint8Array(10 + bytesPerRow * h + 6);
+  let o = 0;
+  buf[o++] = 0x1B; buf[o++] = 0x40; // init
+  buf[o++] = 0x1D; buf[o++] = 0x76; buf[o++] = 0x30; buf[o++] = 0x00; // GS v 0
+  buf[o++] = bytesPerRow & 0xFF; buf[o++] = (bytesPerRow >> 8) & 0xFF;
+  buf[o++] = h & 0xFF; buf[o++] = (h >> 8) & 0xFF;
+  for (let y = 0; y < h; y++) {
+    for (let bx = 0; bx < bytesPerRow; bx++) {
+      let byte = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        const idx = (y * w + bx * 8 + bit) * 4;
+        if (imgData[idx] < 128) byte |= (0x80 >> bit);
+      }
+      buf[o++] = byte;
+    }
+  }
+  buf[o++] = 0x1B; buf[o++] = 0x64; buf[o++] = 0x04; // feed
+  buf[o++] = 0x1D; buf[o++] = 0x56; buf[o++] = 0x00; // cut
+  return buf;
+}
+
+async function blePrint(canvas) {
+  if (!bleChar) throw new Error('BLE printer not connected');
+  const data = canvasToEscPos(canvas);
+  console.log('[ble] print start, ' + data.length + ' bytes');
+  const start = Date.now();
+  for (let i = 0; i < data.length; i += BLE_CHUNK) {
+    await bleChar.writeValueWithoutResponse(data.slice(i, i + BLE_CHUNK));
+  }
+  console.log('[ble] print done, ' + ((Date.now() - start) / 1000).toFixed(2) + 's');
 }
 
 // --- SQS Print Queue ---
@@ -1343,7 +1420,12 @@ function startHostPolling() {
           const msg = resp.Messages[0];
           console.log('[host] received message:', msg.MessageId);
           setStatus('host: printing...');
-          await printRawBT('data:image/png;base64,' + msg.Body);
+          const printUrl = 'data:image/png;base64,' + msg.Body;
+          if (bleChar) {
+            const img = await loadImage(printUrl);
+            ditherImage(img);
+            await blePrint(document.getElementById('dither-canvas'));
+          }
           console.log('[host] printed, deleting message');
           await sqs.deleteMessage({
             QueueUrl: SQS_QUEUE_URL,
@@ -1382,15 +1464,27 @@ settingsOverlay.addEventListener('click', closeSettings);
 // Mode select
 const modeSelect = document.getElementById('mode-select');
 modeSelect.value = mode;
+document.getElementById('printer-item').style.display = mode === 'host' ? 'flex' : 'none';
 modeSelect.addEventListener('change', () => {
   mode = modeSelect.value;
   console.log('[settings] mode changed to ' + mode);
   localStorage.setItem('momir-mode', mode);
+  document.getElementById('printer-item').style.display = mode === 'host' ? 'flex' : 'none';
   if (mode === 'host') startHostPolling();
   else stopHostPolling();
 });
 
 // Debug console
+// BLE connect
+document.getElementById('ble-btn').addEventListener('click', async () => {
+  try {
+    await bleConnect();
+  } catch (e) {
+    console.error('[ble] connect failed:', e.message);
+    document.getElementById('ble-btn').textContent = 'FAILED';
+  }
+});
+
 let debugEl = null;
 document.getElementById('debug-btn').addEventListener('click', () => {
   if (!debugEl) {
